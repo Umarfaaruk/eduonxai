@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="400" height="400" role="img" aria-labelledby="t">
+  <title id="t">EdunoxAI mark</title>
+  <rect width="100" height="100" fill="#FFFFFF"/>
+  <defs>
+    <linearGradient id="gm" x1="20" y1="12" x2="84" y2="88" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1E1B5E"/>
+      <stop offset="0.45" stop-color="#3B2FC9"/>
+      <stop offset="1" stop-color="#00D1FF"/>
+    </linearGradient>
+  </defs>
+  <path d="M28 20 V80 M28 20 H71 M28 50 H57 M28 80 H71" fill="none" stroke="url(#gm)" stroke-width="4.5" stroke-linecap="round"/>
+  <circle cx="28" cy="20" r="8" fill="url(#gm)"/><circle cx="28" cy="50" r="8" fill="url(#gm)"/><circle cx="28" cy="80" r="8" fill="url(#gm)"/>
+  <circle cx="78" cy="20" r="4.75" fill="none" stroke="url(#gm)" stroke-width="4.5"/><circle cx="64" cy="50" r="4.75" fill="none" stroke="url(#gm)" stroke-width="4.5"/><circle cx="78" cy="80" r="4.75" fill="none" stroke="url(#gm)" stroke-width="4.5"/>
+</svg>
