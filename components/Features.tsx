@@ -10,7 +10,7 @@ function Visual({ id }: { id: FeatureId }) {
     return (
       <div className="mt-6 flex gap-2" aria-hidden>
         {days.map((d, i) => (
-          <div key={i} className={`grid h-14 flex-1 place-items-center rounded-xl border text-sm font-semibold ${i < 4 ? "border-accent/30 bg-accent/10 text-accent" : "border-line bg-white/[0.03] text-muted"}`}>
+          <div key={i} className={`grid h-14 flex-1 place-items-center rounded-xl border text-sm font-semibold ${i < 4 ? "border-accent/30 bg-accent/10 text-accent-ink" : "border-line bg-wash text-muted"}`}>
             {i < 4 ? <Check className="size-4" /> : d}
           </div>
         ))}
@@ -21,7 +21,7 @@ function Visual({ id }: { id: FeatureId }) {
     return (
       <div className="mt-6 space-y-2 text-sm" aria-hidden>
         <div className="ml-auto w-fit rounded-2xl rounded-br-md bg-brand px-3.5 py-2">Explain this step by step</div>
-        <div className="w-fit rounded-2xl rounded-bl-md bg-white/[0.06] px-3.5 py-2 text-muted">Sure. First, identify what the question asks for&hellip;</div>
+        <div className="w-fit rounded-2xl rounded-bl-md bg-wash-2 px-3.5 py-2 text-muted">Sure. First, identify what the question asks for&hellip;</div>
       </div>
     );
   }
@@ -49,7 +49,7 @@ export function Features() {
         />
         <div className="mt-14 grid gap-4 md:grid-cols-3">
           {features.map(({ id, icon: Icon, title, text, wide }) => (
-            <Reveal key={id} as="article" className={`group relative overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface/70 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-surface-2/70 ${wide ? "md:col-span-2" : ""}`}>
+            <Reveal key={id} as="article" className={`group relative overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface/70 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-line-strong hover:bg-surface-2/70 ${wide ? "md:col-span-2" : ""}`}>
               <div className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full bg-brand/0 blur-3xl transition-colors duration-500 group-hover:bg-brand/30" aria-hidden />
               <span className="grid size-11 place-items-center rounded-xl bg-gradient-to-br from-brand to-brand-deep text-white shadow-lg shadow-brand/30">
                 <Icon className="size-5" aria-hidden />

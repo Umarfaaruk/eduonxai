@@ -30,6 +30,15 @@ Copy these into `.env.local` when you deploy:
 | `NEXT_PUBLIC_APP_URL` | Where the "Start learning" buttons go (your sign-up or login page) |
 | `NEXT_PUBLIC_SITE_URL` | Public site URL, used for metadata, sitemap and robots |
 
+## Theming
+
+Light and dark themes are driven by CSS variables (`--c-*` in `app/globals.css`) keyed on `<html data-theme>`.
+- First visit follows the OS setting (with a no-JS `prefers-color-scheme` fallback); the toggle saves the choice to `localStorage`.
+- A tiny inline script in `app/layout.tsx` sets the theme before first paint, so there is no flash.
+- The toggle is stateless (`components/ThemeToggle.tsx`), so there is no hydration mismatch.
+- `components/Logo.tsx` swaps between `logo-dark.svg` and `logo-light.svg` via CSS.
+- Any section can force a theme with `data-theme="dark"` (the CTA panel does), and set `text-fg` on it so text re-resolves in that scope.
+
 ## Security
 
 - `npm audit` reports 0 vulnerabilities (a `minimatch` override covers a dev-only lint dependency)

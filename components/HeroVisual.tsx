@@ -14,13 +14,13 @@ export function HeroVisual() {
 
   return (
     <div aria-hidden="true" className="relative mx-auto w-full max-w-md lg:max-w-none">
-      <div className="absolute -inset-10 -z-10 rounded-full bg-brand/30 blur-3xl" />
+      <div className="glow absolute -inset-10 -z-10 rounded-full bg-brand/30 blur-3xl" />
 
       <motion.div {...float(-6, 7)} className="rounded-3xl border border-line bg-surface/80 p-5 shadow-glow backdrop-blur">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">Today&apos;s plan</span>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/5 px-2.5 py-1 text-xs font-medium text-fg">
-            <Flame className="size-3.5 text-accent" /> 7 day streak
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-wash px-2.5 py-1 text-xs font-medium text-fg">
+            <Flame className="size-3.5 text-accent-ink" /> 7 day streak
           </span>
         </div>
         <div className="mt-5 flex items-center gap-5">
@@ -32,7 +32,7 @@ export function HeroVisual() {
                   <stop offset="1" stopColor="#22D3EE" />
                 </linearGradient>
               </defs>
-              <circle cx="40" cy="40" r="34" fill="none" stroke="rgb(255 255 255 / 0.08)" strokeWidth="8" />
+              <circle cx="40" cy="40" r="34" fill="none" className="stroke-line-strong" strokeWidth="8" />
               <motion.circle
                 cx="40" cy="40" r="34" fill="none" stroke="url(#ring)" strokeWidth="8" strokeLinecap="round"
                 strokeDasharray={C}
@@ -46,12 +46,12 @@ export function HeroVisual() {
           <ul className="flex-1 space-y-2.5 text-sm">
             {["Mechanics lesson", "20 question quiz"].map((t) => (
               <li key={t} className="flex items-center gap-2 text-muted">
-                <span className="grid size-5 place-items-center rounded-full bg-accent/15 text-accent"><Check className="size-3" /></span>
-                <span className="line-through decoration-white/20">{t}</span>
+                <span className="grid size-5 place-items-center rounded-full bg-accent/15 text-accent-ink"><Check className="size-3" /></span>
+                <span className="line-through decoration-line-strong">{t}</span>
               </li>
             ))}
             <li className="flex items-center gap-2 text-fg">
-              <span className="size-5 rounded-full border border-white/25" />
+              <span className="size-5 rounded-full border border-line-strong" />
               Timed mock section
             </li>
           </ul>
@@ -59,11 +59,11 @@ export function HeroVisual() {
       </motion.div>
 
       <motion.div {...float(7, 8)} className="relative -mt-3 ml-6 rounded-3xl border border-line bg-surface-2/90 p-4 shadow-glow backdrop-blur sm:ml-12">
-        <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-brand px-3.5 py-2 text-sm">
+        <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-brand px-3.5 text-white py-2 text-sm">
           Why does a rocket move forward in space?
         </div>
-        <div className="mt-2.5 max-w-[90%] rounded-2xl rounded-bl-md bg-white/[0.06] px-3.5 py-2.5 text-sm text-fg">
-          <span className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-accent">
+        <div className="mt-2.5 max-w-[90%] rounded-2xl rounded-bl-md bg-wash-2 px-3.5 py-2.5 text-sm text-fg">
+          <span className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-accent-ink">
             <MessageSquareText className="size-3.5" /> AI tutor
           </span>
           Newton&apos;s third law. The engine pushes gas backward, and the gas pushes the rocket forward with equal force.
@@ -71,7 +71,7 @@ export function HeroVisual() {
       </motion.div>
 
       <motion.div {...float(-5, 6.5)} className="relative -mt-2 mr-4 flex w-fit items-center gap-3 rounded-2xl border border-line bg-surface/90 px-4 py-3 shadow-glow backdrop-blur sm:ml-auto">
-        <Timer className="size-5 text-accent" />
+        <Timer className="size-5 text-accent-ink" />
         <div className="text-sm leading-tight">
           <strong className="block font-semibold">Mock exam</strong>
           <span className="text-xs text-muted">Section 2 of 3</span>

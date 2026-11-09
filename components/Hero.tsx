@@ -10,12 +10,12 @@ export function Hero() {
   return (
     <section id="top" className="relative isolate overflow-hidden pt-28 pb-20 sm:pt-36 lg:pb-28">
       <div className="bg-dots absolute inset-0 -z-10" aria-hidden />
-      <div className="absolute left-1/2 top-0 -z-10 h-[420px] w-[720px] -translate-x-1/2 rounded-full bg-brand/25 blur-[120px]" aria-hidden />
-      <div className="absolute right-0 top-40 -z-10 h-72 w-72 rounded-full bg-accent/10 blur-[110px]" aria-hidden />
+      <div className="glow absolute left-1/2 top-0 -z-10 h-[420px] w-[720px] -translate-x-1/2 rounded-full bg-brand/25 blur-[120px]" aria-hidden />
+      <div className="glow absolute right-0 top-40 -z-10 h-72 w-72 rounded-full bg-accent/10 blur-[110px]" aria-hidden />
 
       <div className="mx-auto grid max-w-6xl items-center gap-14 px-4 sm:px-6 lg:grid-cols-[1.05fr_0.95fr]">
         <Reveal>
-          <p className="inline-flex items-center gap-2 rounded-full border border-line bg-white/[0.04] px-3.5 py-1.5 text-sm text-muted">
+          <p className="inline-flex items-center gap-2 rounded-full border border-line bg-wash px-3.5 py-1.5 text-sm text-muted">
             <span className="size-1.5 rounded-full bg-accent shadow-[0_0_10px] shadow-accent" />
             AI-powered learning platform
           </p>
@@ -36,7 +36,7 @@ export function Hero() {
           <ul className="mt-9 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted">
             {trust.map((t) => (
               <li key={t} className="inline-flex items-center gap-2">
-                <Check className="size-4 text-accent" aria-hidden /> {t}
+                <Check className="size-4 text-accent-ink" aria-hidden /> {t}
               </li>
             ))}
           </ul>

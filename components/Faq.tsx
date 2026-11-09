@@ -13,7 +13,7 @@ export function Faq() {
             <details key={f.q} className="group">
               <summary className="flex min-h-14 list-none items-center justify-between gap-4 px-5 py-4 text-left font-semibold marker:hidden [&::-webkit-details-marker]:hidden">
                 {f.q}
-                <Plus className="size-5 shrink-0 text-accent transition-transform duration-200 group-open:rotate-45" aria-hidden />
+                <Plus className="size-5 shrink-0 text-accent-ink transition-transform duration-200 group-open:rotate-45" aria-hidden />
               </summary>
               <p className="px-5 pb-5 text-pretty text-muted">{f.a}</p>
             </details>

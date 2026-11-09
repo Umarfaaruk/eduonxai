@@ -9,10 +9,16 @@ export function Reveal({
   children,
   className = "",
   as: Tag = "div",
+  theme,
 }: {
   children: ReactNode;
   className?: string;
   as?: "div" | "li" | "article";
+  theme?: "light" | "dark";
 }) {
-  return <Tag className={`reveal ${className}`}>{children}</Tag>;
+  return (
+    <Tag className={`reveal ${className}`} data-theme={theme}>
+      {children}
+    </Tag>
+  );
 }

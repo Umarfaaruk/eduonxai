@@ -9,8 +9,8 @@ const base =
 const variants: Record<Variant, string> = {
   // Cyan CTA with dark text keeps contrast above 10:1
   primary:
-    "bg-accent text-ink shadow-[0_8px_30px_-8px_rgb(34_211_238_/_0.55)] hover:bg-[#5ce1f4] hover:-translate-y-0.5 active:translate-y-0",
-  ghost: "border border-line bg-white/[0.03] text-fg hover:bg-white/[0.08] hover:border-white/20",
+    "bg-accent text-on-accent shadow-[0_8px_30px_-8px_rgb(34_211_238_/_0.55)] hover:bg-[#5ce1f4] hover:-translate-y-0.5 active:translate-y-0",
+  ghost: "border border-line bg-wash text-fg hover:bg-wash-2 hover:border-line-strong",
 };
 
 const sizes: Record<Size, string> = {

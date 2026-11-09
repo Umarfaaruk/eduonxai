@@ -1,6 +1,7 @@
 "use client";
 
-import Image from "next/image";
+import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Menu, X } from "lucide-react";
@@ -32,7 +33,7 @@ export function Navbar() {
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <a href="#top" aria-label="Eduonxai home" className="shrink-0">
-          <Image src="/logo-dark.svg" alt="Eduonxai" width={134} height={32} priority />
+          <Logo width={134} height={32} priority />
         </a>
 
         <nav aria-label="Primary" className="hidden items-center gap-8 md:flex">
@@ -44,12 +45,13 @@ export function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <Button href={site.appUrl} size="sm" className="hidden sm:inline-flex">
+          <ThemeToggle />
+          <Button href={site.appUrl} size="sm" className="max-sm:hidden">
             Start learning
           </Button>
           <button
             type="button"
-            className="grid size-11 place-items-center rounded-full text-fg transition-colors duration-200 hover:bg-white/10 md:hidden"
+            className="grid size-11 place-items-center rounded-full text-fg transition-colors duration-200 hover:bg-wash-2 md:hidden"
             aria-label={open ? "Close menu" : "Open menu"}
             aria-expanded={open}
             aria-controls="mobile-menu"
@@ -77,7 +79,7 @@ export function Navbar() {
                   key={l.href}
                   href={l.href}
                   onClick={() => setOpen(false)}
-                  className="rounded-xl px-3 py-3 text-base font-medium text-fg transition-colors duration-200 hover:bg-white/5"
+                  className="rounded-xl px-3 py-3 text-base font-medium text-fg transition-colors duration-200 hover:bg-wash"
                 >
                   {l.label}
                 </a>
