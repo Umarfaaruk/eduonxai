@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="400" height="400" role="img" aria-labelledby="t">
+  <title id="t">EdunoxAI mark</title>
+  <defs>
+    <linearGradient id="am" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4F46E5"/><stop offset="1" stop-color="#1B1A4B"/>
+    </linearGradient>
+    <linearGradient id="bm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7C9BFF"/><stop offset="1" stop-color="#4F46E5"/>
+    </linearGradient>
+  </defs>
+  <g stroke-linejoin="round" stroke-width="4">
+    <path d="M12 42 Q33 39 46 53 L46 88 Q33 74 12 77 Z" fill="url(#am)" stroke="url(#am)"/>
+    <path d="M88 42 Q67 39 54 53 L54 88 Q67 74 88 77 Z" fill="url(#bm)" stroke="url(#bm)"/>
+  </g>
+  <path transform="translate(50 24) scale(0.82) translate(-50 -22)" d="M50 5 C51.6 17 54 20.4 66 22 C54 23.6 51.6 27 50 39 C48.4 27 46 23.6 34 22 C46 20.4 48.4 17 50 5 Z" fill="#FFB020"/>
+</svg>
