@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/logo-full.svg" alt="EdunoxAI" height="80">
+  <img src="assets/v5/D-wordmark-logo.svg" alt="EduonxAI" height="80">
 </p>
 
-# EdunoxAI
+# EduonxAI
 
 AI study platform for Indian competitive exam prep (JEE, NEET, GATE and state government exams).
 
@@ -15,14 +15,7 @@ AI study platform for Indian competitive exam prep (JEE, NEET, GATE and state go
 
 ## Brand assets
 
-| File | Use |
-|---|---|
-| `assets/logo-full.svg` | Primary lockup on light backgrounds |
-| `assets/logo-full-dark.svg` | Lockup on dark backgrounds |
-| `assets/logo-mark.svg` | App icon, avatar, social profile |
-| `assets/favicon.svg`, `favicon-32.png`, `apple-touch-icon.png` | Web icons |
-
-The wordmark is outlined (Plus Jakarta Sans ExtraBold), so the SVGs render the same everywhere with no font install.
+Logo concepts live in `assets/v5/` (concept board: `board.png`). A final direction has not been chosen yet.
 
 ## Design system
 
