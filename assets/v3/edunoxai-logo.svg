@@ -3,7 +3,7 @@
   
   <g transform="translate(8 0)"><defs>
     <linearGradient id="al" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#4F46E5"/><stop offset="1" stop-color="#1B1A4B"/>
+      <stop offset="0" stop-color="#4F46E5"/><stop offset="1" stop-color="#2F2B94"/>
     </linearGradient>
     <linearGradient id="bl" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#7C9BFF"/><stop offset="1" stop-color="#4F46E5"/>
