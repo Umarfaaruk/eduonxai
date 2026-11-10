@@ -1,34 +1,41 @@
-
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-# debug
-# dependencies
-# env files (can opt-in for committing if needed)
-# misc
-# next.js
-# production
-# testing
-# typescript
-# vercel
-*.pem
-*.tsbuildinfo
-.DS_Store
-.env*
-.pnp.*
-.pnpm-debug.log*
-.vercel
-.yarn/*
-/.next/
-/.pnp
-/build
-/coverage
-/node_modules
-/out/
-next-env.d.ts
-node_modules/
+# Logs
+logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.tsbuildinfo
+*.local
+.env
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Project custom exclusions
+development/
+developments/
+!developments/*.md
+
+# Scratch/test scripts
+scratch/
+
+# Codex automation artifacts
+.codex-*
+
+# Python reference library (not part of the build)
+
+.vercel

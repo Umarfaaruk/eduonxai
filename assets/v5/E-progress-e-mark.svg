@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="400" height="400" role="img"><title>EduonxAI mark</title><defs>
-    <linearGradient id="pem" x1="14" y1="86" x2="86" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#0B1026"/><stop offset="0.5" stop-color="#4F46E5"/><stop offset="1" stop-color="#22D3EE"/></linearGradient>
-  </defs>
-  <circle cx="50" cy="50" r="31" fill="none" stroke="#E4E7FF" stroke-width="11"/>
-  <path d="M81 50 A31 31 0 1 0 73.04 70.74" fill="none" stroke="url(#pem)" stroke-width="11" stroke-linecap="round"/>
-  <path d="M19 50 H81" stroke="url(#pem)" stroke-width="11" stroke-linecap="round"/></svg>

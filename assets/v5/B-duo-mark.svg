@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="400" height="400" role="img"><title>EduonxAI mark</title><defs>
-    <linearGradient id="abm" x1="6" y1="90" x2="70" y2="26" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#0B1026"/><stop offset="1" stop-color="#4F46E5"/></linearGradient>
-    <linearGradient id="bbm" x1="40" y1="80" x2="94" y2="10" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#4F46E5"/><stop offset="1" stop-color="#22D3EE"/></linearGradient>
-    <clipPath id="cbm"><circle cx="38" cy="58" r="32"/></clipPath>
-  </defs>
-  <circle cx="38" cy="58" r="32" fill="url(#abm)"/>
-  <circle cx="62" cy="42" r="32" fill="url(#bbm)"/>
-  <circle cx="62" cy="42" r="32" fill="#FFFFFF" clip-path="url(#cbm)"/></svg>

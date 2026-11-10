@@ -1,0 +1,50 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function isAdminRecord(uid) {
+      let data = firestore.get(/databases/(default)/documents/users/$(uid)).data;
+      return data.get('is_admin', false) == true || data.get('role', '') == 'admin';
+    }
+
+    // Profile avatars: users may only read/write their own folder
+    match /avatars/{userId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId)
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if isOwner(userId);
+    }
+
+    // User-uploaded study materials (if used)
+    match /materials/{userId}/{allPaths=**} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId)
+        && request.resource.size < 20 * 1024 * 1024;
+      allow delete: if isOwner(userId);
+    }
+
+    // Complaint screenshots: users can upload/read theirs, authenticated admins can view
+    match /complaints/{userId}/{fileName} {
+      allow get: if isOwner(userId) || (
+        isAuthenticated() && isAdminRecord(request.auth.uid)
+      );
+      allow write: if isOwner(userId)
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(png|jpeg|webp)');
+      allow delete: if isOwner(userId);
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,53 +1,78 @@
-# Eduonxai
+# EduOnx — AI-Powered Learning Platform
 
-AI-powered learning platform for competitive exam preparation and career skills: personalized study plans, lessons, practice quizzes, timed mock exams, an AI tutor and progress tracking.
+An intelligent learning platform with AI tutoring, study tracking, gamification, and personalized learning paths.
 
-This repo holds the marketing website and the brand assets.
+## Tech Stack
 
-## Stack
+- **Framework**: Vite + React 18 + TypeScript
+- **Styling**: Tailwind CSS + shadcn/ui
+- **Backend**: Firebase (Auth, Firestore)
+- **AI**: Groq API (Llama 3.3 70B) via server proxy
+- **Charts**: Recharts
+- **Animation**: Framer Motion + GSAP
+- **Deployment**: Vercel
 
-- Next.js (App Router, Server Components by default) and TypeScript
-- Tailwind CSS v4 with design tokens in `app/globals.css`
-- Motion for the hero preview, Lucide for icons
-- Self-hosted fonts via `next/font/local` (Manrope and Inter), no third-party requests
-- CSS scroll-driven animations for section reveals (no JavaScript, respects reduced motion)
-- Metadata API, generated Open Graph image, sitemap and robots
+## Features
 
-## Getting started
+- **AI Tutor** — Chat with an AI tutor about your study materials
+- **Lessons** — Curated learning paths with progress tracking & XP
+- **YouTube Workspace** — Embed videos inside lessons with side-by-side tools
+- **Quick Tools** — Notes, Calculator, AI Summarizer (context-aware in lessons)
+- **Study Planner** — AI-generated study roadmaps (toggle in Lessons)
+- **Practice Arena** — Quiz engine with topic-based assessments
+- **NDLI Library** — Search the National Digital Library of India for eBooks
+- **Progress Dashboard** — Daily/weekly/monthly analytics
+- **Gamification** — XP, streaks, achievements, leaderboards
+- **Deep Focus Mode** — Minimal UI for distraction-free studying
+- **Ask Doubt** — AI-powered doubt solving with image support
+
+## Getting Started
 
 ```bash
+# Install dependencies
 npm install
-npm run dev      # http://localhost:3000
-npm run build && npm run start
+
+# Set up environment variables
+cp .env.example .env.local
+# Edit .env.local with your Firebase and Groq API keys
+
+# Start development server
+npm run dev
 ```
 
-## Configuration
+## Project Structure
 
-Copy these into `.env.local` when you deploy:
+```
+src/
+├── components/       # Shared components (layout, UI, landing)
+├── contexts/         # React contexts (Auth)
+├── hooks/            # Custom hooks (dashboard data, deep focus)
+├── lib/              # Services (AI, Firebase, analytics, utils)
+├── pages/            # Route pages
+│   ├── auth/         # Login, Signup
+│   ├── doubts/       # Ask Doubt, AI Solution, Camera Q&A
+│   ├── lessons/      # Lesson List, Lesson Viewer (with YouTube + Tools)
+│   ├── materials/    # Resource Library, AI Tutor, Flashcards, Study Planner
+│   ├── progress/     # Progress Dashboard
+│   ├── quiz/         # Practice Arena
+│   ├── social/       # Leaderboard, Friends, Achievements
+│   ├── timer/        # Study Timer
+│   └── tools/        # Quick Tools (standalone fallback)
+└── api/              # Vercel serverless functions (Groq proxy, NDLI proxy)
+```
 
-| Variable | Purpose |
+## Environment Variables
+
+| Variable | Description |
 |---|---|
-| `NEXT_PUBLIC_APP_URL` | Where the "Start learning" buttons go (your sign-up or login page) |
-| `NEXT_PUBLIC_SITE_URL` | Public site URL, used for metadata, sitemap and robots |
+| `VITE_FIREBASE_API_KEY` | Firebase API key |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Firebase auth domain |
+| `VITE_FIREBASE_PROJECT_ID` | Firebase project ID |
+| `VITE_FIREBASE_STORAGE_BUCKET` | Firebase storage bucket |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Firebase messaging sender ID |
+| `VITE_FIREBASE_APP_ID` | Firebase app ID |
+| `GROQ_API_KEY` | Groq API key (server-side only) |
 
-## Theming
+## License
 
-Light and dark themes are driven by CSS variables (`--c-*` in `app/globals.css`) keyed on `<html data-theme>`.
-- First visit follows the OS setting (with a no-JS `prefers-color-scheme` fallback); the toggle saves the choice to `localStorage`.
-- A tiny inline script in `app/layout.tsx` sets the theme before first paint, so there is no flash.
-- The toggle is stateless (`components/ThemeToggle.tsx`), so there is no hydration mismatch.
-- `components/Logo.tsx` swaps between `logo-dark.svg` and `logo-light.svg` via CSS.
-- Any section can force a theme with `data-theme="dark"` (the CTA panel does), and set `text-fg` on it so text re-resolves in that scope.
-
-## Security
-
-- `npm audit` reports 0 vulnerabilities (a `minimatch` override covers a dev-only lint dependency)
-- Security headers are set in `next.config.ts`: CSP, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, COOP
-- The CSP allows `'unsafe-inline'` scripts because statically prerendered Next.js pages need inline bootstrap scripts. Move to nonce-based CSP if you later render pages dynamically.
-- No secrets, forms or third-party scripts in this codebase
-
-## Brand
-
-- Logo concepts and final files: `assets/final/` (final), `assets/v5/` (explored concepts)
-- Web logo files: `public/logo-dark.svg`, `public/mark.svg`
-- Palette: ink `#0B1026`, brand indigo `#4F46E5`, accent cyan `#22D3EE`
+© 2026 EduOnx. All rights reserved.
