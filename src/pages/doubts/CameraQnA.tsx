@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { aiVisionComplete, ChatMessage } from "@/lib/aiService";
 import ReactMarkdown from "react-markdown";
+import { fileToJpegDataUrl } from "@/lib/image";
 
 const CameraQnA = () => {
   const location = useLocation();
@@ -17,7 +18,7 @@ const CameraQnA = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleImageCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -26,12 +27,16 @@ const CameraQnA = () => {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setImagePreview(reader.result as string);
+    // Phone photos are several MB; as base64 they exceeded the AI request
+    // size limit and the question failed. Downscale to a JPEG first (this
+    // also converts formats the vision model does not accept).
+    try {
+      setImagePreview(await fileToJpegDataUrl(file, 1600));
       setAnswer("");
-    };
-    reader.readAsDataURL(file);
+    } catch (err: any) {
+      toast.error(err?.message || "This image could not be read. Please try another one.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const clearImage = () => {

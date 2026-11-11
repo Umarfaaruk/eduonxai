@@ -49,7 +49,7 @@ export default async function handler(req: any, res: any) {
     const { uid } = body ?? {};
     const adminToken = /^Bearer (\S+)$/.exec(req.headers?.authorization ?? "")?.[1];
 
-    if (!uid || typeof uid !== "string" || uid.length > 128 || /[\/\x00-\x1f]/.test(uid) || uid === "." || uid === "..") {
+    if (!uid || typeof uid !== "string" || uid.length > 128 || !/^[^/\p{Cc}]+$/u.test(uid) || uid === "." || uid === "..") {
       return res.status(400).json({ error: "Missing or invalid 'uid' field" });
     }
     if (!adminToken || typeof adminToken !== "string") {

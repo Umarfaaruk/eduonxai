@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { collection, getDocs, query, where, addDoc, updateDoc, doc } from "firebase/firestore";
+import { collection, getDocs, getDoc, query, where, addDoc, updateDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
 import { aiComplete } from "@/lib/aiService";
@@ -69,6 +69,28 @@ export default function Flashcards() {
     const maxRetries = 3;
     let lastError = null;
 
+    // The material may arrive from a link carrying only { id, file_name } (for
+    // example from the Study Planner). Load its text before prompting; without
+    // it the AI was asked to make flashcards from the word "undefined".
+    let source: any = selectedMaterial;
+    if (!source.extracted_text && !source.summary) {
+      source = (materials as any[] | undefined)?.find((m) => m.id === selectedMaterial.id) ?? source;
+      if (!source.extracted_text && !source.summary) {
+        try {
+          const snap = await getDoc(doc(db, "materials", selectedMaterial.id));
+          if (snap.exists()) source = { id: snap.id, ...snap.data() };
+        } catch (err) {
+          console.warn("[Flashcards] Could not load material:", err);
+        }
+      }
+    }
+    const sourceText = String(source.extracted_text || source.summary || "").substring(0, 8000);
+    if (sourceText.trim().length < 30) {
+      toast.error("This material has no readable text to make flashcards from.");
+      setGenerating(false);
+      return;
+    }
+
     while (attempt < maxRetries && !pairs) {
       try {
         attempt++;
@@ -76,7 +98,7 @@ export default function Flashcards() {
 Return ONLY a valid JSON array of objects with "question" and "answer" string keys. Keep answers concise (1-3 sentences).
 
 Content:
-${selectedMaterial.extracted_text?.substring(0, 8000) || selectedMaterial.summary}`;
+${sourceText}`;
 
         const res = await aiComplete({
           messages: [{ role: "user", content: prompt }],
@@ -198,7 +220,7 @@ ${selectedMaterial.extracted_text?.substring(0, 8000) || selectedMaterial.summar
       {!selectedMaterial ? (
         <div className="grid sm:grid-cols-2 gap-4 mt-6">
           {materials?.map((m: any) => (
-            <div key={m.id} className="bg-card border border-border rounded-xl p-5 hover:border-cta/40 cursor-pointer transition-colors" onClick={() => setSelectedMaterial(m)}>
+            <div key={m.id} className="bg-card border border-border rounded-xl p-5 hover:border-cta/40 cursor-pointer transition-colors" onClick={() => { setSelectedMaterial(m); setCurrentCardIndex(0); setIsFlipped(false); }}>
               <div className="flex items-start gap-3">
                 <FileText className="h-5 w-5 text-cta mt-0.5" />
                 <div>

@@ -21,7 +21,10 @@ export default async function handler(req, res) {
   const caller = await requireAuth(req, res);
   if (!caller) return; // requireAuth already wrote the 401 response
 
-  const { q, type = "all", page = "1" } = req.query;
+  const { q, type = "all" } = req.query;
+  // `page` can arrive as an array or junk; normalise it to a positive integer.
+  const pageNumber = Number.parseInt(String(req.query.page ?? "1"), 10);
+  const page = String(Number.isInteger(pageNumber) && pageNumber > 0 ? Math.min(pageNumber, 500) : 1);
 
   if (!q || typeof q !== "string" || q.trim().length < 2) {
     return res.status(400).json({ error: "Query parameter 'q' is required (min 2 chars)" });

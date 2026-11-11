@@ -127,9 +127,11 @@
  * - Service functions can write to all collections
  */
 
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "./firebase";
 import { toDateKey } from "./utils";
+import { effectiveStreak } from "./streak";
+import { xpLogSignature } from "./xp";
 
 /**
  * ANALYTICS DATA MODELS
@@ -185,71 +187,147 @@ export interface ProductivityScore {
 
 /**
  * ANALYTICS QUERIES
+ *
+ * All metrics are derived from the collections the app actually writes:
+ * study_sessions, quiz_attempts, xp_logs and user_streaks.
+ *
+ * An earlier version read a pre-aggregated `analytics_snapshots` collection,
+ * but nothing ever wrote to it, so consistency, trend and the daily/weekly
+ * breakdowns were permanently zero. It also read the streak with a collection
+ * query (which the security rules reject for non-admins, failing the whole
+ * analytics load) and treated the raw quiz score (0-5) as a percentage.
  */
 
-/**
- * Get user's study time for a given period
- */
-async function getStudyTime(
-  userId: string,
-  period: "today" | "week" | "month" = "today"
-): Promise<number> {
-  const now = new Date();
-  const startDate = new Date();
+const toDate = (value: any): Date | null => {
+  if (!value) return null;
+  const date = typeof value?.toDate === "function" ? value.toDate() : new Date(value);
+  return date instanceof Date && !Number.isNaN(date.getTime()) ? date : null;
+};
 
-  switch (period) {
-    case "today":
-      startDate.setHours(0, 0, 0, 0);
-      break;
-    case "week":
-      startDate.setDate(now.getDate() - 7);
-      break;
-    case "month":
-      startDate.setMonth(now.getMonth() - 1);
-      break;
+interface UserActivity {
+  sessions: { date: Date; seconds: number }[];
+  quizzes: { date: Date | null; pct: number }[];
+  xp: { date: Date; amount: number }[];
+  streak: UserStreak | null;
+}
+
+// The Timer page asks for three metrics at once; share one set of reads.
+const ACTIVITY_TTL_MS = 15_000;
+const activityCache = new Map<string, { at: number; promise: Promise<UserActivity> }>();
+
+async function loadUserActivity(userId: string): Promise<UserActivity> {
+  const [sessionSnap, quizSnap, xpSnap, streakSnap] = await Promise.all([
+    getDocs(query(collection(db, "study_sessions"), where("user_id", "==", userId))),
+    getDocs(query(collection(db, "quiz_attempts"), where("user_id", "==", userId))),
+    getDocs(query(collection(db, "xp_logs"), where("user_id", "==", userId))),
+    getDoc(doc(db, "user_streaks", userId)),
+  ]);
+
+  const sessions: UserActivity["sessions"] = [];
+  sessionSnap.forEach((item) => {
+    const data = item.data();
+    const date = toDate(data.ended_at) ?? toDate(data.created_at);
+    const seconds = Number(data.duration_seconds) || 0;
+    if (date && seconds > 0) sessions.push({ date, seconds });
+  });
+
+  const quizzes: UserActivity["quizzes"] = [];
+  quizSnap.forEach((item) => {
+    const data = item.data();
+    const total = Number(data.total_questions) || 0;
+    if (total <= 0) return;
+    quizzes.push({ date: toDate(data.created_at), pct: ((Number(data.score) || 0) / total) * 100 });
+  });
+
+  const xp: UserActivity["xp"] = [];
+  const seenXp = new Set<string>();
+  xpSnap.forEach((item) => {
+    const data = item.data();
+    if (typeof data.xp_amount !== "number") return;
+    const signature = xpLogSignature(data);
+    if (seenXp.has(signature)) return;
+    seenXp.add(signature);
+    const date = toDate(data.created_at);
+    if (date) xp.push({ date, amount: data.xp_amount });
+  });
+
+  return {
+    sessions,
+    quizzes,
+    xp,
+    streak: streakSnap.exists() ? (streakSnap.data() as UserStreak) : null,
+  };
+}
+
+function getUserActivity(userId: string): Promise<UserActivity> {
+  const cached = activityCache.get(userId);
+  if (cached && Date.now() - cached.at < ACTIVITY_TTL_MS) return cached.promise;
+  const promise = loadUserActivity(userId);
+  activityCache.set(userId, { at: Date.now(), promise });
+  // Never keep a failed load in the cache.
+  promise.catch(() => {
+    if (activityCache.get(userId)?.promise === promise) activityCache.delete(userId);
+  });
+  return promise;
+}
+
+/** One entry per calendar day for the last `days` days, oldest first, ending today. */
+function buildDailySnapshots(userId: string, activity: UserActivity, days: number): AnalyticsSnapshot[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const byDay = new Map<string, AnalyticsSnapshot & { quizPctTotal: number }>();
+  const order: string[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const day = new Date(today);
+    day.setDate(today.getDate() - i);
+    const key = toDateKey(day);
+    order.push(key);
+    byDay.set(key, {
+      user_id: userId,
+      date: key,
+      study_minutes: 0,
+      session_count: 0,
+      xp_earned: 0,
+      quiz_count: 0,
+      quiz_avg_score: 0,
+      streak_maintained: false,
+      quizPctTotal: 0,
+    });
   }
 
-  // Equality-only query (no composite index needed); the time window is applied
-  // on the client.
-  const q = query(
-    collection(db, "study_sessions"),
-    where("user_id", "==", userId)
-  );
+  const studySeconds: Record<string, number> = {};
+  for (const session of activity.sessions) {
+    const entry = byDay.get(toDateKey(session.date));
+    if (!entry) continue;
+    studySeconds[entry.date] = (studySeconds[entry.date] || 0) + session.seconds;
+    entry.session_count += 1;
+  }
+  for (const quiz of activity.quizzes) {
+    if (!quiz.date) continue;
+    const entry = byDay.get(toDateKey(quiz.date));
+    if (!entry) continue;
+    entry.quiz_count += 1;
+    entry.quizPctTotal += quiz.pct;
+  }
+  for (const award of activity.xp) {
+    const entry = byDay.get(toDateKey(award.date));
+    if (entry) entry.xp_earned += award.amount;
+  }
 
-  const docs = await getDocs(q);
-  const startMs = startDate.getTime();
-  const ms = (t: any) => t?.toMillis?.() ?? (t ? new Date(t).getTime() : 0);
-  const totalSeconds = docs.docs
-    .filter((d) => ms(d.data().created_at) >= startMs)
-    .reduce((sum, d) => sum + (d.data().duration_seconds || 0), 0);
-  return Math.round(totalSeconds / 60); // Convert to minutes
+  return order.map((key) => {
+    const { quizPctTotal, ...entry } = byDay.get(key)!;
+    const seconds = studySeconds[key] || 0;
+    return {
+      ...entry,
+      study_minutes: Math.round(seconds / 60),
+      quiz_avg_score: entry.quiz_count > 0 ? Math.round(quizPctTotal / entry.quiz_count) : 0,
+      streak_maintained: seconds > 0,
+    };
+  });
 }
 
-/**
- * Get daily analytics snapshots for charting
- */
-async function getDailyAnalytics(
-  userId: string,
-  days: number = 7
-): Promise<AnalyticsSnapshot[]> {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
-
-  // Equality-only query (no composite index needed); the time-window filter and
-  // ordering are applied on the client.
-  const q = query(
-    collection(db, "analytics_snapshots"),
-    where("user_id", "==", userId)
-  );
-
-  const docs = await getDocs(q);
-  const startMs = startDate.getTime();
-  const ms = (t: any) => t?.toMillis?.() ?? (t ? new Date(t).getTime() : 0);
-  return docs.docs
-    .map((doc) => doc.data() as AnalyticsSnapshot)
-    .filter((s: any) => ms(s.timestamp) >= startMs)
-    .sort((a: any, b: any) => ms(a.timestamp) - ms(b.timestamp));
-}
+const sumMinutes = (days: AnalyticsSnapshot[]) => days.reduce((sum, d) => sum + d.study_minutes, 0);
 
 /**
  * Calculate productivity score for a user
@@ -258,50 +336,41 @@ export async function calculateProductivityScore(
   userId: string,
   dailyGoalMinutes: number = 60
 ): Promise<ProductivityScore> {
-  // Get streak
-  const streakDoc = await getDocs(query(collection(db, "user_streaks"), where("__name__", "==", userId)));
-  const streak = streakDoc.docs[0]?.data() as UserStreak | undefined;
+  const activity = await getUserActivity(userId);
+  const lastWeek = buildDailySnapshots(userId, activity, 7);
+  const weekStudyMinutes = sumMinutes(lastWeek);
+  const currentStreak = effectiveStreak(activity.streak);
 
-  // Get this week's data
-  const weekStudyMinutes = await getStudyTime(userId, "week");
-  const dailyAnalytics = await getDailyAnalytics(userId, 7);
-
-  // Get quiz results — equality-only query, then take the 10 most recent client-side.
-  const quizQ = query(
-    collection(db, "quiz_attempts"),
-    where("user_id", "==", userId)
-  );
-  const quizSnap = await getDocs(quizQ);
-  const qms = (t: any) => t?.toMillis?.() ?? (t ? new Date(t).getTime() : 0);
-  const recentQuizzes = quizSnap.docs
-    .map((d) => d.data())
-    .sort((a: any, b: any) => qms(b.completed_at) - qms(a.completed_at))
+  // Average percentage of the 10 most recent quizzes.
+  const recentQuizzes = activity.quizzes
+    .slice()
+    .sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0))
     .slice(0, 10);
   const avgQuizScore =
     recentQuizzes.length > 0
-      ? recentQuizzes.reduce((sum, q) => sum + (q.score || 0), 0) / recentQuizzes.length
+      ? recentQuizzes.reduce((sum, q) => sum + q.pct, 0) / recentQuizzes.length
       : 0;
 
-  // Calculate component scores
-  const consistencyScore = calculateConsistencyScore(streak, dailyAnalytics);
-  const activityScore = Math.min((weekStudyMinutes / (dailyGoalMinutes * 7)) * 100, 100);
-  const performanceScore = Math.min((avgQuizScore / 100) * 100, 100);
-  const overallScore = (consistencyScore * 0.3 + activityScore * 0.4 + performanceScore * 0.3);
+  // Consistency: streak (50 points) + share of the last 7 days with study (50 points).
+  const streakScore = Math.min((currentStreak / 30) * 50, 50);
+  const daysWithStudy = lastWeek.filter((d) => d.study_minutes > 0).length;
+  const consistencyScore = Math.min(streakScore + (daysWithStudy / lastWeek.length) * 50, 100);
 
-  // Determine trend
+  const activityScore = Math.min((weekStudyMinutes / (dailyGoalMinutes * 7)) * 100, 100);
+  const performanceScore = Math.min(Math.max(avgQuizScore, 0), 100);
+  const overallScore = consistencyScore * 0.3 + activityScore * 0.4 + performanceScore * 0.3;
+
+  // Trend: the last 3 days against the 4 days before them.
   let trend: "improving" | "stable" | "declining" = "stable";
-  if (dailyAnalytics.length >= 2) {
-    const recentAvg =
-      dailyAnalytics.slice(-3).reduce((sum, d) => sum + d.study_minutes, 0) / Math.min(3, dailyAnalytics.length);
-    const previousAvg =
-      dailyAnalytics.slice(0, -3).reduce((sum, d) => sum + d.study_minutes, 0) / Math.max(1, dailyAnalytics.length - 3);
+  const recentAvg = sumMinutes(lastWeek.slice(-3)) / 3;
+  const previousAvg = sumMinutes(lastWeek.slice(0, -3)) / 4;
+  if (recentAvg > 0 || previousAvg > 0) {
     if (recentAvg > previousAvg * 1.1) trend = "improving";
     else if (recentAvg < previousAvg * 0.9) trend = "declining";
   }
 
-  // Generate insights
   const insights: string[] = [];
-  if (streak?.current_streak === 0) insights.push("Start a new streak by studying today!");
+  if (currentStreak === 0) insights.push("Start a new streak by studying today!");
   if (activityScore < 50) insights.push("Increase your daily study time to reach your goals.");
   if (avgQuizScore > 80) insights.push("Excellent quiz performance! Keep it up.");
   if (weekStudyMinutes >= dailyGoalMinutes * 7) insights.push("🎉 You've met your weekly goal!");
@@ -317,87 +386,41 @@ export async function calculateProductivityScore(
 }
 
 /**
- * Calculate consistency score based on streak and regularity
- */
-function calculateConsistencyScore(streak: UserStreak | undefined, dailyAnalytics: AnalyticsSnapshot[]): number {
-  let score = 0;
-
-  // Streak component (50 points max)
-  if (streak) {
-    const streakScore = Math.min((streak.current_streak / 30) * 50, 50);
-    score += streakScore;
-  }
-
-  // Regularity component (50 points max)
-  const daysWithStudy = dailyAnalytics.filter((d) => d.study_minutes > 0).length;
-  const regularityScore = dailyAnalytics.length > 0
-    ? (daysWithStudy / dailyAnalytics.length) * 50
-    : 0;
-  score += regularityScore;
-
-  return Math.min(score, 100);
-}
-
-
-
-/**
  * Generate detailed performance insights
  */
 export async function getPerformanceBreakdown(userId: string) {
-  const today = new Date();
-  const dailyAnalytics = await getDailyAnalytics(userId, 30);
+  const activity = await getUserActivity(userId);
+  // 31 days always covers the whole current calendar month.
+  const daily = buildDailySnapshots(userId, activity, 31);
+  const today = daily[daily.length - 1];
 
-  // Daily breakdown
-  const daily = dailyAnalytics.filter((d) => {
-    const date = new Date(d.timestamp?.toDate?.() || d.date);
-    return date.toDateString() === today.toDateString();
-  })[0];
-
-  // Weekly breakdown
-  const weekStart = new Date();
-  weekStart.setDate(today.getDate() - today.getDay());
-  weekStart.setHours(0, 0, 0, 0);
-
-  const weeklyTotal = dailyAnalytics
-    .filter((d) => {
-      const date = new Date(d.timestamp?.toDate?.() || d.date);
-      return date >= weekStart;
-    })
-    .reduce((sum, d) => sum + d.study_minutes, 0);
-
-  // Monthly breakdown
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-  const monthlyTotal = dailyAnalytics
-    .filter((d) => {
-      const date = new Date(d.timestamp?.toDate?.() || d.date);
-      return date >= monthStart;
-    })
-    .reduce((sum, d) => sum + d.study_minutes, 0);
+  // Week starts on Monday, matching the dashboard and timer charts.
+  const now = new Date();
+  const daysSinceMonday = (now.getDay() + 6) % 7;
+  const thisWeek = daily.slice(-(daysSinceMonday + 1));
+  const thisMonth = daily.slice(-now.getDate());
+  const weeklyTotal = sumMinutes(thisWeek);
+  const monthlyTotal = sumMinutes(thisMonth);
 
   return {
     daily: {
-      minutes: daily?.study_minutes || 0,
-      sessions: daily?.session_count || 0,
-      xp: daily?.xp_earned || 0,
-      quizzes: daily?.quiz_count || 0,
+      minutes: today?.study_minutes || 0,
+      sessions: today?.session_count || 0,
+      xp: today?.xp_earned || 0,
+      quizzes: today?.quiz_count || 0,
     },
     weekly: {
       minutes: weeklyTotal,
-      sessionCount: dailyAnalytics
-        .filter((d) => {
-          const date = new Date(d.timestamp?.toDate?.() || d.date);
-          return date >= weekStart;
-        })
-        .reduce((sum, d) => sum + d.session_count, 0),
-      avgDailyMinutes: Math.round(weeklyTotal / 7),
+      sessionCount: thisWeek.reduce((sum, d) => sum + d.session_count, 0),
+      avgDailyMinutes: Math.round(weeklyTotal / Math.max(thisWeek.length, 1)),
     },
     monthly: {
       minutes: monthlyTotal,
-      daysActive: dailyAnalytics.filter((d) => d.study_minutes > 0).length,
-      avgDailyMinutes: Math.round(monthlyTotal / 30),
+      daysActive: thisMonth.filter((d) => d.study_minutes > 0).length,
+      avgDailyMinutes: Math.round(monthlyTotal / Math.max(thisMonth.length, 1)),
     },
-    breakdown: dailyAnalytics.slice(-7).map((d) => ({
-      date: typeof d.date === "string" ? d.date : (d.timestamp?.toDate ? toDateKey(d.timestamp.toDate()) : ""),
+    breakdown: daily.slice(-7).map((d) => ({
+      date: d.date,
       minutes: d.study_minutes,
       sessions: d.session_count,
       xp: d.xp_earned,
@@ -406,57 +429,35 @@ export async function getPerformanceBreakdown(userId: string) {
 }
 
 /**
- * Get consistency metrics
+ * Get consistency metrics over the last 30 days
  */
 export async function getConsistencyMetrics(userId: string) {
-  const dailyAnalytics = await getDailyAnalytics(userId, 30);
+  const activity = await getUserActivity(userId);
+  const daily = buildDailySnapshots(userId, activity, 30);
 
-  // Calculate streaks
-  let currentStreak = 0;
   let maxStreak = 0;
-  let tempStreak = 0;
-
-  // Sort by date ascending — use slice() to avoid mutating the original array
-  const sortedAnalytics = dailyAnalytics.slice().sort((a, b) => {
-    const dateA = new Date(typeof a.date === "string" ? a.date : a.timestamp?.toDate?.() || "");
-    const dateB = new Date(typeof b.date === "string" ? b.date : b.timestamp?.toDate?.() || "");
-    return dateA.getTime() - dateB.getTime();
-  });
-
-  for (const day of sortedAnalytics) {
-    if (day.study_minutes > 0) {
-      tempStreak++;
-      if (tempStreak > maxStreak) maxStreak = tempStreak;
-    } else {
-      tempStreak = 0;
-    }
+  let run = 0;
+  for (const day of daily) {
+    run = day.study_minutes > 0 ? run + 1 : 0;
+    if (run > maxStreak) maxStreak = run;
   }
 
-  // Check if today is part of current streak
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const lastStudyDate = sortedAnalytics[sortedAnalytics.length - 1];
-  const lastDate = new Date(typeof lastStudyDate?.date === "string" ? lastStudyDate.date : lastStudyDate?.timestamp?.toDate?.() || "");
-  lastDate.setHours(0, 0, 0, 0);
+  // Current streak: consecutive study days ending today. A day that simply
+  // hasn't been studied *yet* does not break the run that ended yesterday.
+  let currentStreak = 0;
+  let index = daily.length - 1;
+  if (index >= 0 && daily[index].study_minutes === 0) index--;
+  for (; index >= 0 && daily[index].study_minutes > 0; index--) currentStreak++;
 
-  if (lastDate.getTime() === today.getTime()) {
-    currentStreak = tempStreak;
-  } else {
-    currentStreak = 0;
-  }
-
-  const daysActive = dailyAnalytics.filter((d) => d.study_minutes > 0).length;
-  const avgDailyMinutes = dailyAnalytics.length > 0
-    ? Math.round(dailyAnalytics.reduce((sum, d) => sum + d.study_minutes, 0) / dailyAnalytics.length)
-    : 0;
+  const daysActive = daily.filter((d) => d.study_minutes > 0).length;
+  const totalMinutes = sumMinutes(daily);
 
   return {
     currentStreak,
     maxStreak,
     daysActive,
-    totalDays: dailyAnalytics.length,
-    consistency: Math.round((daysActive / Math.max(dailyAnalytics.length, 1)) * 100),
-    avgDailyMinutes,
+    totalDays: daily.length,
+    consistency: Math.round((daysActive / Math.max(daily.length, 1)) * 100),
+    avgDailyMinutes: daily.length > 0 ? Math.round(totalMinutes / daily.length) : 0,
   };
 }
-

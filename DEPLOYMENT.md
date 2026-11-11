@@ -7,8 +7,8 @@ Verify in an isolated Firebase project and a Vercel preview before promoting thi
 Extract the archive and open the eduonx-main directory. Use Node 24.
 
 1. Run npm ci.
-2. Run node --test tests/security.test.mjs.
-3. Run npm run lint, npm run build, and npm audit.
+2. Run npm test (security tests plus unit tests for the client helpers).
+3. Run npm run typecheck, npm run lint, npm run build, and npm audit.
 4. Run the Firebase and browser acceptance checks against representative staging data. Compare with the original application to identify regressions.
 
 ## Staging configuration
@@ -24,5 +24,5 @@ Extract the archive and open the eduonx-main directory. Use Node 24.
 1. Back up Firebase data and retain the currently deployed application, Firebase rules and indexes. Review .firebaserc and explicitly select your staging project before applying any changes.
 2. Apply the bundled Firestore rules and indexes and Storage rules using Firebase tooling in staging. Review the index diff to retain existing required indexes. Accept the cross-service permission prompt only for the intended project.
 3. Verify login, admin navigation and deletion, complaint submission and attachment viewing, quiz progress, lesson and timer XP, text and vision AI, transcripts, and weekly email. Confirm the cron route rejects missing and incorrect secrets. The bundled schedule is Monday at 09:00 UTC.
-4. Promote the frontend, API and Firebase rules together. The new rules require quiz XP and the corresponding attempt in one transaction. The new admin API requires bearer-header authorization. Reload old browser sessions at cutover.
+4. Promote the frontend, API and Firebase rules together. firestore.rules now lets any signed-in user read a single user_streaks document (the leaderboard profile card shows another student's streak); deploy the rules with this release or that card shows no streak for other users. The new rules require quiz XP and the corresponding attempt in one transaction. The new admin API requires bearer-header authorization. Reload old browser sessions at cutover.
 5. If rollback is necessary, restore the corresponding application and rules revisions together. Preserve existing records and backups. Older revisions reintroduce the vulnerabilities in the audit.

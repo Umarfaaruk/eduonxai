@@ -61,14 +61,19 @@ const Dashboard = () => {
 
   // Fetch history for selected complaint
   useEffect(() => {
-    if (!selectedComplaint?.id || !isDetailModalOpen) {
+    if (!user || !selectedComplaint?.id || !isDetailModalOpen) {
       setSelectedComplaintHistory([]);
       return;
     }
 
     setHistoryLoading(true);
+    // Security rules only allow reading your own history rows, and Firestore
+    // rejects a query that could match other users' rows. Without the user_id
+    // filter this listener always failed with permission-denied, so the
+    // timeline never loaded.
     const q = query(
       collection(db, "complaint_history"),
+      where("user_id", "==", user.uid),
       where("complaint_id", "==", selectedComplaint.id)
     );
 
@@ -86,7 +91,7 @@ const Dashboard = () => {
     });
 
     return () => unsubscribe();
-  }, [selectedComplaint, isDetailModalOpen]);
+  }, [selectedComplaint, isDetailModalOpen, user]);
 
   const activeDetailComplaint = myComplaints.find(c => c.id === selectedComplaint?.id) || selectedComplaint;
 

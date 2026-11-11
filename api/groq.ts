@@ -144,7 +144,8 @@ export default async function handler(req: any, res: any) {
     }
 
     // ── Parameter clamps ─────────────────────────────────────
-    const safeTemperature = clamp(Number(temperature) || 0.7, 0, 1);
+    const parsedTemperature = Number(temperature);
+    const safeTemperature = clamp(Number.isFinite(parsedTemperature) ? parsedTemperature : 0.7, 0, 1);
     const tokenLimit = Math.floor(clamp(Number(max_tokens || maxTokens) || MAX_TOKENS_CAP, 1, MAX_TOKENS_CAP));
 
     if (typeof stream !== "boolean" || (vision && requestedModel !== "meta-llama/llama-4-scout-17b-16e-instruct")) {

@@ -6,11 +6,13 @@ import { Bell, User, LogOut, Shield, Bot, Camera, AlertTriangle, FileImage, X, L
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { db, auth, storage } from "@/lib/firebase";
-import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
+import { collection, doc, getDoc, setDoc } from "firebase/firestore";
 import { ref, uploadBytes } from "firebase/storage";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "firebase/auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { updateProfile } from "firebase/auth";
+import { uploadAvatar, MAX_AVATAR_BYTES } from "@/lib/avatar";
 
 const tabs = [
   { key: "profile", icon: User, label: "Profile" },
@@ -85,13 +87,15 @@ const Settings = () => {
     try {
       let screenshotUrl = null;
       if (screenshot) {
-        const fileExtension = screenshot.name.split(".").pop();
+        const fileExtension = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" }[screenshot.type] ?? "jpg";
         const screenshotRef = ref(storage, `complaints/${user!.uid}/${Date.now()}_screenshot.${fileExtension}`);
         await uploadBytes(screenshotRef, screenshot, { contentType: screenshot.type });
         screenshotUrl = screenshotRef.fullPath;
       }
 
-      const complaintId = `CMP-${Math.floor(100000 + Math.random() * 900000)}`;
+      // Time-based reference: a 6-digit random id collided once enough reports
+      // existed, and a collision is rejected by the rules as an "update".
+      const complaintId = `CMP-${Date.now().toString(36).toUpperCase()}${Math.floor(Math.random() * 1296).toString(36).toUpperCase().padStart(2, "0")}`;
       const nowStr = new Date().toISOString();
 
       await setDoc(doc(db, "complaints", complaintId), {
@@ -109,8 +113,9 @@ const Settings = () => {
         updated_at: nowStr
       });
 
-      const historyId = `HST-${Math.floor(100000 + Math.random() * 900000)}`;
-      await setDoc(doc(db, "complaint_history", historyId), {
+      const historyRef = doc(collection(db, "complaint_history"));
+      const historyId = historyRef.id;
+      await setDoc(historyRef, {
         id: historyId,
         complaint_id: complaintId,
         old_status: "",
@@ -249,24 +254,66 @@ const Settings = () => {
   const handleSaveProfile = async () => {
     if (!user) return;
     setIsSaving(true);
+    const fullName = name.trim();
+    if (!fullName) {
+      toast.error("Please enter your name.");
+      setIsSaving(false);
+      return;
+    }
     try {
       const docRef = doc(db, "profiles", user.uid);
-      await updateDoc(docRef, {
-        full_name: name,
-        university: university,
-        stream: stream,
+      // setDoc+merge also works when the profile document does not exist yet
+      // (updateDoc threw in that case). The email is not written here: it is
+      // the sign-in address owned by Firebase Auth, and editing only the
+      // profile copy left the two out of sync.
+      await setDoc(docRef, {
+        user_id: user.uid,
+        full_name: fullName,
+        university: university.trim(),
+        stream: stream.trim(),
         age: age,
-        bio: bio,
-        place: place,
-        // email usually handled by Firebase Auth, but we can store it too
-        email: email,
-      });
+        bio: bio.trim(),
+        place: place.trim(),
+        updated_at: new Date().toISOString(),
+      }, { merge: true });
+      if (auth.currentUser && auth.currentUser.displayName !== fullName) {
+        await updateProfile(auth.currentUser, { displayName: fullName }).catch(() => {});
+      }
+      // Sidebar, dashboard greeting and profile page cache the profile.
+      for (const key of ["settings-profile", "profile", "profile-sidebar", "my-profile", "friends-my-profile"]) {
+        queryClient.invalidateQueries({ queryKey: [key, user.uid] });
+      }
       toast.success("Profile updated successfully");
     } catch (error) {
       console.error("Error updating profile:", error);
       toast.error("Failed to update profile");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file || !user) return;
+    if (file.size > MAX_AVATAR_BYTES) {
+      toast.error("Image must be under 5MB");
+      input.value = "";
+      return;
+    }
+    const uploadToast = toast.loading("Uploading profile picture...");
+    try {
+      await uploadAvatar(user.uid, file);
+      for (const key of ["settings-profile", "profile", "profile-sidebar"]) {
+        queryClient.invalidateQueries({ queryKey: [key, user.uid] });
+      }
+      toast.success("Profile picture updated!");
+    } catch (err) {
+      console.error("[Settings] Avatar upload error:", err);
+      toast.error("Failed to update profile picture. Please try again.");
+    } finally {
+      toast.dismiss(uploadToast);
+      input.value = "";
     }
   };
 
@@ -359,37 +406,12 @@ const Settings = () => {
                       type="file"
                       accept="image/jpeg,image/png,image/webp"
                       className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file || !user) return;
-                        if (file.size > 2 * 1024 * 1024) { toast.error("Image must be under 2MB"); return; }
-                        try {
-                          const canvas = document.createElement('canvas');
-                          const ctx = canvas.getContext('2d');
-                          const img = document.createElement('img');
-                          const reader = new FileReader();
-                          reader.onload = async (ev) => {
-                            img.onload = async () => {
-                              const size = 200;
-                              canvas.width = size; canvas.height = size;
-                              const minDim = Math.min(img.width, img.height);
-                              ctx?.drawImage(img, (img.width - minDim) / 2, (img.height - minDim) / 2, minDim, minDim, 0, 0, size, size);
-                              const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-                              await updateDoc(doc(db, 'profiles', user.uid), { avatar_url: dataUrl });
-                              queryClient.invalidateQueries({ queryKey: ['settings-profile', user.uid] });
-                              queryClient.invalidateQueries({ queryKey: ['profile', user.uid] });
-                              toast.success('Profile picture updated!');
-                            };
-                            img.src = ev.target?.result as string;
-                          };
-                          reader.readAsDataURL(file);
-                        } catch { toast.error('Failed to update picture'); }
-                      }}
+                      onChange={handleAvatarChange}
                     />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-foreground">Profile Picture</p>
-                    <p className="text-xs text-muted-foreground">Click to upload (JPEG, PNG, WebP, max 2MB)</p>
+                    <p className="text-xs text-muted-foreground">Click to upload (JPEG, PNG, WebP, max 5MB)</p>
                   </div>
                 </div>
 
@@ -400,7 +422,7 @@ const Settings = () => {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground">Email Address</label>
-                    <Input value={email} onChange={(e) => setEmail(e.target.value)} className="h-10" />
+                    <Input value={email} readOnly disabled title="Your sign-in email can't be changed here" className="h-10" />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground">University / School</label>

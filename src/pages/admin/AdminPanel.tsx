@@ -363,8 +363,11 @@ const AdminPanel = () => {
         updated_at: nowStr,
       });
 
-      const historyId = `HST-${Math.floor(100000 + Math.random() * 900000)}`;
-      await setDoc(doc(db, "complaint_history", historyId), {
+      // Auto id: a 6-digit random id could collide and silently overwrite an
+      // earlier history entry (admins are allowed to update).
+      const historyRef = doc(collection(db, "complaint_history"));
+      const historyId = historyRef.id;
+      await setDoc(historyRef, {
         id: historyId,
         complaint_id: complaintId,
         old_status: oldStatus,
@@ -391,7 +394,7 @@ const AdminPanel = () => {
         message: notificationMsg,
         type: "system",
         icon: notificationIcon,
-      });
+      }, user?.uid);
 
       toast.success(`Complaint status updated to ${newStatus}`);
       setSelectedComplaintId(null);
@@ -433,8 +436,11 @@ const AdminPanel = () => {
         updated_at: nowStr,
       });
 
-      const historyId = `HST-${Math.floor(100000 + Math.random() * 900000)}`;
-      await setDoc(doc(db, "complaint_history", historyId), {
+      // Auto id: a 6-digit random id could collide and silently overwrite an
+      // earlier history entry (admins are allowed to update).
+      const historyRef = doc(collection(db, "complaint_history"));
+      const historyId = historyRef.id;
+      await setDoc(historyRef, {
         id: historyId,
         complaint_id: selectedComplaintId,
         old_status: oldStatus,
@@ -450,7 +456,7 @@ const AdminPanel = () => {
         message: "Your issue has been fixed successfully.",
         type: "system",
         icon: "✅",
-      });
+      }, user?.uid);
 
       toast.dismiss(refToast);
       toast.success("Complaint successfully resolved!");

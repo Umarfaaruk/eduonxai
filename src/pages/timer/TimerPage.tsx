@@ -8,7 +8,7 @@ import { Clock, Flame, Target, TrendingUp, Calendar, Award, Zap } from "lucide-r
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useQuery } from "@tanstack/react-query";
-import { calculateProductivityScore, getConsistencyMetrics, getPerformanceBreakdown } from "@/lib/analytics";
+import { calculateProductivityScore, getConsistencyMetrics } from "@/lib/analytics";
 import { toDateKey } from "@/lib/utils";
 
 interface StudySession {
@@ -45,9 +45,6 @@ const TimerPage = () => {
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
   const [weeklyStats, setWeeklyStats] = useState<WeeklyStats[]>([]);
   const [monthlyStats, setMonthlyStats] = useState<MonthlyStats[]>([]);
-  const [productivityScore, setProductivityScore] = useState<any>(null);
-  const [consistencyMetrics, setConsistencyMetrics] = useState<any>(null);
-  const [, setPerformanceBreakdown] = useState<any>(null);
 
   // Fetch recent study sessions
   const { data: sessions, isLoading } = useQuery({
@@ -66,35 +63,29 @@ const TimerPage = () => {
       const ms = (t: any) => t?.toMillis?.() ?? (t ? new Date(t).getTime() : 0);
       return docs.docs
         .map((doc) => ({
-          id: doc.id,
           ...(doc.data() as StudySession),
+          id: doc.id,
         } as StudySession))
         .sort((a: any, b: any) => ms(b.created_at) - ms(a.created_at))
         .slice(0, 100);
     },
   });
 
-  // Fetch analytics data
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchAnalytics = async () => {
-      try {
-        const [productivity, consistency, performance] = await Promise.all([
-          calculateProductivityScore(user.uid),
-          getConsistencyMetrics(user.uid),
-          getPerformanceBreakdown(user.uid),
-        ]);
-        setProductivityScore(productivity);
-        setConsistencyMetrics(consistency);
-        setPerformanceBreakdown(performance);
-      } catch (error) {
-        console.error("Error fetching analytics:", error);
-      }
-    };
-
-    fetchAnalytics();
-  }, [user]);
+  // Analytics as a query (not a one-off effect) so the numbers refresh when a
+  // study session is saved and this key is invalidated.
+  const { data: timerAnalytics } = useQuery({
+    queryKey: ["timerAnalytics", user?.uid],
+    enabled: !!user,
+    queryFn: async () => {
+      const [productivity, consistency] = await Promise.all([
+        calculateProductivityScore(user!.uid),
+        getConsistencyMetrics(user!.uid),
+      ]);
+      return { productivity, consistency };
+    },
+  });
+  const productivityScore = timerAnalytics?.productivity ?? null;
+  const consistencyMetrics = timerAnalytics?.consistency ?? null;
 
   // Calculate all statistics: daily, weekly, monthly
   useEffect(() => {

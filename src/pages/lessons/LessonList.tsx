@@ -92,7 +92,7 @@ const LessonList = () => {
           )
         );
         const progressMap = new Map(
-          progressSnap.docs.map(doc => [doc.id.split("_")[1], doc.data()])
+          progressSnap.docs.map(doc => [doc.data().topic_id || doc.id.slice(user.uid.length + 1), doc.data()])
         );
 
         // Fetch topic quiz progress
@@ -353,17 +353,32 @@ ${materialContent}`;
         : `No transcript available. Topic: ${videoTitle}\nChannel: ${videoChannel}\nDescription: ${videoData.transcript || "No description provided."}`;
 
       // Step 2: Chunked transcript for long videos
-      const maxChunkLen = 120000;
-      const chunks: string[] = [];
-      if (transcript.length <= maxChunkLen) {
+      // Each chunk goes out as one AI request, and the proxy rejects requests
+      // over 60 000 characters, so chunks must stay well below that. (They were
+      // 120 000, which made every long video fail.)
+      const singlePassMaxLen = 120000; // unchanged: shorter videos use one pass
+      const maxChunkLen = 40000;
+      const maxChunks = 8; // stays inside the per-minute AI request quota
+      let chunks: string[] = [];
+      if (transcript.length <= singlePassMaxLen) {
         chunks.push(transcript);
       } else {
         let start = 0;
         while (start < transcript.length) {
           const end = Math.min(start + maxChunkLen, transcript.length);
           chunks.push(transcript.substring(start, end));
+          // Stop at the end of the transcript. The old check (`start >= length`
+          // after stepping back 500 chars) was never true, so long videos sent
+          // the loop spinning forever and froze the tab.
+          if (end >= transcript.length) break;
           start = end - 500;
-          if (start >= transcript.length) break;
+        }
+        // Very long videos: sample evenly across the whole transcript.
+        if (chunks.length > maxChunks) {
+          const all = chunks;
+          chunks = Array.from({ length: maxChunks }, (_, i) =>
+            all[Math.round((i * (all.length - 1)) / (maxChunks - 1))]
+          );
         }
       }
 

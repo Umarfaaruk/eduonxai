@@ -7,7 +7,9 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { addDoc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { aiStream } from "@/lib/aiService";
+import { aiStream, aiVisionComplete } from "@/lib/aiService";
+import { fileToJpegDataUrl } from "@/lib/image";
+import { extractPdfText, isPdfFile } from "@/lib/documentText";
 import ReactMarkdown from "react-markdown";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -17,7 +19,13 @@ const ALLOWED_FILE_TYPES = [...ALLOWED_IMAGE_TYPES, "application/pdf", "text/pla
 interface Message {
   role: "user" | "assistant";
   content: string;
+  /** What the AI receives for this turn when it differs from what is shown
+   *  (the shown text plus the text extracted from an attached file). */
+  apiContent?: string;
 }
+
+/** How much attached-document text is sent along with a question. */
+const MAX_ATTACHMENT_CHARS = 12_000;
 
 const SYSTEM_PROMPT = `You are an expert, patient tutor helping students solve doubts and understand concepts.
 
@@ -147,72 +155,106 @@ const DoubtInput = () => {
   const handleSend = async () => {
     if ((!question.trim() && !attachedFile) || streaming) return;
 
-    let userContent = question.trim();
-    if (attachedFile) {
-      userContent = `[Attached: ${attachedFile.name}]\n\n${userContent}`;
-    }
-
+    const typed = question.trim();
+    const file = attachedFile;
+    const userContent = file ? `[Attached: ${file.name}]\n\n${typed}`.trim() : typed;
     if (!userContent) return;
-
-    const userMsg: Message = { role: "user", content: userContent };
-    const newHistory = [...messages, userMsg];
-    setMessages(newHistory);
-    setQuestion("");
-    clearAttachment();
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
     setStreaming(true);
 
-    // Add empty assistant message for streaming
-    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+    const previous = messages;
+    setMessages([...previous, { role: "user", content: userContent }, { role: "assistant", content: "" }]);
+    setQuestion("");
+    clearAttachment();
+
+    const setAnswer = (content: string) =>
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { role: "assistant", content };
+        return updated;
+      });
 
     try {
-      const apiMessages = [
-        { role: "system" as const, content: SYSTEM_PROMPT },
-        ...newHistory.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
-      ];
-
-      let full = "";
-      await aiStream(
-        {
-          messages: apiMessages,
-          temperature: 0.7,
-          maxTokens: 4096,
-          signal: controller.signal,
-        },
-        (token) => {
-          if (token.includes("⏳") && token.includes("retrying")) {
-            full = "";
+      // The attachment used to be dropped: only its file name reached the AI,
+      // so "solve this" with a photo or PDF got an answer about nothing.
+      // Images go to the vision model; PDFs and text files are read here and
+      // their text is sent with the question.
+      let imageDataUrl: string | null = null;
+      let apiContent = userContent;
+      if (file) {
+        try {
+          if (ALLOWED_IMAGE_TYPES.includes(file.type)) {
+            imageDataUrl = await fileToJpegDataUrl(file, 1600);
+          } else {
+            const text = isPdfFile(file) ? (await extractPdfText(file)).text : await file.text();
+            if (text.trim()) {
+              apiContent =
+                `${typed || "Explain this document and help me understand it."}\n\n` +
+                `--- Attached file: ${file.name} ---\n${text.slice(0, MAX_ATTACHMENT_CHARS)}`;
+            } else {
+              toast.warning("No readable text was found in the attachment.");
+            }
           }
-          full += token;
-          setMessages((prev) => {
-            const updated = [...prev];
-            updated[updated.length - 1] = { role: "assistant", content: full };
-            return updated;
-          });
+        } catch (attachErr) {
+          console.error("[DoubtInput] Attachment error:", attachErr);
+          toast.warning("The attachment could not be read, so only your question was sent.");
         }
-      );
+      }
+      if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
 
-      // Clean up rate limit messages
-      const cleanResponse = full.replace(/\n*⏳\s*\*Rate limited[^*]*\*\n*/g, "").trim();
-      if (cleanResponse !== full) {
+      if (apiContent !== userContent) {
         setMessages((prev) => {
           const updated = [...prev];
-          updated[updated.length - 1] = { role: "assistant", content: cleanResponse };
+          const index = updated.length - 2;
+          if (updated[index]?.role === "user") updated[index] = { ...updated[index], apiContent };
           return updated;
         });
       }
 
-      if (!full.trim()) {
-        setMessages((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1] = {
-            role: "assistant",
-            content: "I couldn't generate a response. Please try rephrasing your question.",
-          };
-          return updated;
+      let full = "";
+      if (imageDataUrl) {
+        full = await aiVisionComplete({
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `${SYSTEM_PROMPT}\n\nStudent's question about the attached image: ${typed || "Explain what this image shows and solve any problem in it, step by step."}`,
+                },
+                { type: "image_url", image_url: { url: imageDataUrl } },
+              ],
+            },
+          ],
+          maxTokens: 2048,
+          signal: controller.signal,
         });
+        setAnswer(full);
+      } else {
+        const apiMessages = [
+          { role: "system" as const, content: SYSTEM_PROMPT },
+          ...previous.map((m) => ({ role: m.role, content: m.apiContent ?? m.content })),
+          { role: "user" as const, content: apiContent },
+        ];
+
+        await aiStream(
+          {
+            messages: apiMessages,
+            temperature: 0.7,
+            maxTokens: 4096,
+            signal: controller.signal,
+          },
+          (token) => {
+            full += token;
+            setAnswer(full);
+          }
+        );
+      }
+
+      if (!full.trim()) {
+        setAnswer("I couldn't generate a response. Please try rephrasing your question.");
       }
 
       // Save to Firestore for history
@@ -245,19 +287,23 @@ const DoubtInput = () => {
         }
       }
     } catch (e: any) {
-      if (e.name === "AbortError") return;
+      if (e.name === "AbortError") {
+        // Stopped before any text arrived: drop the empty answer bubble.
+        setMessages((prev) =>
+          prev.length > 0 && prev[prev.length - 1].role === "assistant" && !prev[prev.length - 1].content
+            ? prev.slice(0, -1)
+            : prev
+        );
+        return;
+      }
       console.error("[DoubtInput] Stream error:", e);
-      setMessages((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = {
-          role: "assistant",
-          content: `⚠️ Error: ${e.message}. Please try again.`,
-        };
-        return updated;
-      });
+      setAnswer(`⚠️ ${e.message || "Something went wrong."} Please try again.`);
     } finally {
-      setStreaming(false);
-      abortControllerRef.current = null;
+      // A newer request may already own the controller (Stop, then Send again).
+      if (abortControllerRef.current === controller) {
+        setStreaming(false);
+        abortControllerRef.current = null;
+      }
     }
   };
 

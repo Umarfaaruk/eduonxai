@@ -110,7 +110,11 @@ service cloud.firestore {
 
     // ── /user_streaks collection ──────────────────────
     match /user_streaks/{userId} {
-      allow read: if isUser(userId) || isAdmin();
+      // Single-document reads are open to signed-in users: the leaderboard
+      // profile card shows another student's streak (like their public profile
+      // and XP). Listing the collection stays limited to the owner and admins.
+      allow get: if isAuthenticated();
+      allow list: if isUser(userId) || isAdmin();
       allow write: if isUser(userId);
       allow delete: if isUser(userId) || isAdmin();
     }

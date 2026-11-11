@@ -9,6 +9,20 @@ interface Question {
   correct: number;
 }
 
+interface ExamResult {
+  score: number;
+  total: number;
+  xp: number;
+}
+
+interface StartedAttempt {
+  attemptId: string;
+  title: string;
+  expiresAt: number;
+  questions: Question[];
+  result?: ExamResult;
+}
+
 function isQuestion(value: unknown): value is Question {
   if (!value || typeof value !== "object") return false;
   const q = value as Question;
@@ -59,7 +73,7 @@ export default async function handler(req: any, res: any) {
       // Prevent repeated starts and keep one attempt per user per catalog version.
       const slotId = createHash("sha256").update(JSON.stringify([caller.uid, body.examId])).digest("hex");
       const slot = db.collection("_exam_slots").doc(slotId);
-      const started = await db.runTransaction(async (transaction) => {
+      const started = await db.runTransaction(async (transaction): Promise<StartedAttempt | null> => {
         const [examSnapshot, slotSnapshot] = await Promise.all([transaction.get(examRef), transaction.get(slot)]);
         const exam = examSnapshot.data();
         if (!exam?.published || typeof exam.title !== "string" || !Number.isInteger(exam.durationSeconds) ||
@@ -70,7 +84,10 @@ export default async function handler(req: any, res: any) {
         if (previous) {
           const saved = (await transaction.get(attempts.doc(previous.attemptId))).data();
           if (!saved || saved.uid !== caller.uid || saved.examId !== body.examId) throw new Error("Missing exam attempt");
-          return { ...saved, attemptId: previous.attemptId };
+          return {
+            attemptId: previous.attemptId, title: saved.title, expiresAt: saved.expiresAt,
+            questions: saved.questions as Question[], result: saved.result,
+          };
         }
         const questions = (exam.questions as Question[]).map(({ question, options, correct }) => ({
           question, options, correct,
@@ -84,10 +101,10 @@ export default async function handler(req: any, res: any) {
         return { ...value, attemptId };
       });
       if (!started) return res.status(404).json({ error: "Exam unavailable" });
-      const questions = (started.questions as Question[]).map(({ question, options }) => ({ question, options }));
+      const questions = started.questions.map(({ question, options }) => ({ question, options }));
       return res.status(200).json({
         attemptId: started.attemptId, title: started.title, expiresAt: started.expiresAt,
-        questions, result: "result" in started ? started.result : null,
+        questions, result: started.result ?? null,
       });
     }
 

@@ -47,12 +47,19 @@ const Achievements = () => {
       if (!user) return null;
 
       try {
-        const [xpSnap, streakSnap, quizSnap, studySnap] = await Promise.all([
+        const [xpSnap, streakSnap, quizSnap, studySnap, lessonSnap] = await Promise.all([
           getDocs(query(collection(db, "xp_logs"), where("user_id", "==", user.uid))),
           getDoc(doc(db, "user_streaks", user.uid)),
           getDocs(query(collection(db, "quiz_attempts"), where("user_id", "==", user.uid))),
           getDocs(query(collection(db, "study_sessions"), where("user_id", "==", user.uid))),
+          getDocs(query(collection(db, "lesson_progress"), where("user_id", "==", user.uid))),
         ]);
+
+        let lessonsCompleted = 0;
+        lessonSnap.forEach((d) => {
+          const done = d.data().completed_lessons;
+          if (Array.isArray(done)) lessonsCompleted += done.length;
+        });
 
         const totalXp = dedupedXpSum(xpSnap.docs);
 
@@ -73,7 +80,7 @@ const Achievements = () => {
           quizCount: quizzes.length,
           perfectQuizzes,
           high90,
-          lessonsCompleted: 0, // Would need lesson progress collection
+          lessonsCompleted,
           totalStudySeconds,
           doubtCount: 0, // Would need doubt_sessions collection
         };
@@ -98,8 +105,9 @@ const Achievements = () => {
 
   const progressMap: Record<string, { current: number; total: number }> = stats
     ? {
-        streak_7: { current: stats.streak?.current_streak ?? 0, total: 7 },
-        streak_30: { current: stats.streak?.current_streak ?? 0, total: 30 },
+        // Badges are earned by the best streak ever reached, not today's streak.
+        streak_7: { current: Math.max(stats.streak?.longest_streak ?? 0, stats.streak?.current_streak ?? 0), total: 7 },
+        streak_30: { current: Math.max(stats.streak?.longest_streak ?? 0, stats.streak?.current_streak ?? 0), total: 30 },
         first_quiz: { current: stats.quizCount, total: 1 },
         quiz_master: { current: stats.quizCount, total: 50 },
         perfect_score: { current: stats.perfectQuizzes, total: 1 },

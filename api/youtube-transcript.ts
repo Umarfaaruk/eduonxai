@@ -416,10 +416,18 @@ export default async function handler(req: any, res: any) {
   const caller = await requireAuth(req, res);
   if (!caller) return; // requireAuth already wrote the 401 response
 
-  const { v: videoId } = req.query;
+  // Accept either ?v=<id> or ?url=<full YouTube link>.
+  const { v, url } = req.query;
+  let videoId: unknown = v;
+  if (typeof videoId !== "string" && typeof url === "string") {
+    videoId = url.match(
+      /(?:youtube\.com\/watch\?(?:.*&)?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/|youtube\.com\/live\/)([a-zA-Z0-9_-]{11})/
+    )?.[1];
+  }
 
-  // Validate video ID
-  if (!videoId || typeof videoId !== "string" || videoId.length < 8) {
+  // Validate video ID. It is interpolated into upstream request URLs, so only
+  // the exact 11-character YouTube id alphabet is accepted.
+  if (typeof videoId !== "string" || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
     return res.status(400).json({
       error: "Valid YouTube video ID required",
       example: "?v=dQw4w9WgXcQ",

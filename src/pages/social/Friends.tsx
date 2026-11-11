@@ -8,6 +8,7 @@ import { db } from "@/lib/firebase";
 import { toast } from "sonner";
 import { collection, query, where, getDocs, deleteDoc, doc, getDoc, documentId } from "firebase/firestore";
 import { sendFriendRequest, acceptFriendRequest } from "@/lib/friends";
+import { invalidateFriendRecords } from "@/lib/queryInvalidation";
 
 const Friends = () => {
   const { user } = useAuth();
@@ -144,10 +145,11 @@ const Friends = () => {
       return sendFriendRequest(user.uid, myName, addresseeId);
     },
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ["friendRecords", user?.uid] });
+      invalidateFriendRecords(queryClient, user?.uid);
       if (res === "sent") toast.success("Friend request sent!");
       else if (res === "exists") toast.info("Already connected or request pending.");
     },
+    onError: () => toast.error("Couldn't send the friend request. Please try again."),
   });
 
   const acceptRequest = useMutation({
@@ -155,9 +157,10 @@ const Friends = () => {
       await acceptFriendRequest(record.id, myName, record.requester_id, user!.uid);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["friendRecords", user?.uid] });
+      invalidateFriendRecords(queryClient, user?.uid);
       toast.success("You're now friends!");
     },
+    onError: () => toast.error("Couldn't accept the request. Please try again."),
   });
 
   const removeFriend = useMutation({
@@ -165,9 +168,10 @@ const Friends = () => {
       await deleteDoc(doc(db, "friends_list", friendId));
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["friendRecords", user?.uid] });
+      invalidateFriendRecords(queryClient, user?.uid);
       toast.success("Removed");
-    }
+    },
+    onError: () => toast.error("Couldn't remove this connection. Please try again."),
   });
 
   // Check if a user is already a friend or has pending request

@@ -5,6 +5,7 @@ import { doc, getDoc, collection, query, where, getDocs, documentId, setDoc } fr
 import { computeAvgQuizScore } from "@/lib/userStats";
 import { toDateKey } from "@/lib/utils";
 import { dedupedXpSum } from "@/lib/xp";
+import { withEffectiveStreak } from "@/lib/streak";
 
 /* ──────────────────────────────────────────────────────────────────────────
  * FIRESTORE READ CONSOLIDATION
@@ -99,7 +100,7 @@ export const useDashboardData = () => {
   const { user } = useAuth();
 
   /* ── 1 read: profile ─────────────────────────────────────── */
-  const { data: profile } = useQuery({
+  const { data: profile, isPending: profilePending } = useQuery({
     queryKey: ["profile", user?.uid],
     queryFn: async () => {
       if (!user) return null;
@@ -115,7 +116,9 @@ export const useDashboardData = () => {
     queryFn: async () => {
       if (!user) return null;
       const docSnap = await getDoc(doc(db, "user_streaks", user.uid));
-      return docSnap.exists() ? docSnap.data() : { current_streak: 0 };
+      // The stored streak is only rewritten when a session is saved, so correct
+      // it for today: a missed day means the streak is over.
+      return docSnap.exists() ? withEffectiveStreak(docSnap.data()) : { current_streak: 0 };
     },
     enabled: !!user,
   });
@@ -126,7 +129,7 @@ export const useDashboardData = () => {
    * never be inflated by duplicate entries and always matches the
    * leaderboard. We also write the corrected value back to
    * profiles.total_xp so any other read of the aggregate self-heals. */
-  const { data: totalXp } = useQuery({
+  const { data: totalXp, isPending: totalXpPending } = useQuery({
     queryKey: ["totalXp", user?.uid],
     queryFn: async () => {
       if (!user) return 0;
@@ -152,7 +155,7 @@ export const useDashboardData = () => {
   });
 
   /* ── 1 read: study_sessions → studyTime AND progressAnalytics ── */
-  const { data: sessionStats } = useQuery({
+  const { data: sessionStats, isPending: sessionStatsPending } = useQuery({
     queryKey: ["sessionStats", user?.uid],
     queryFn: async () => {
       if (!user) return { studyTime: "0h", analytics: emptyAnalytics() };
@@ -331,7 +334,9 @@ export const useDashboardData = () => {
           const progressByTopic = new Map<string, { completed: number }>();
           progressSnap.forEach((progressDoc) => {
             const data = progressDoc.data();
-            const topicId = data.topic_id || progressDoc.id.split("_")[1];
+            // Doc id is `${uid}_${topicId}`; strip the uid prefix rather than
+            // splitting on "_" (ids may contain underscores).
+            const topicId = data.topic_id || progressDoc.id.slice(user.uid.length + 1);
             if (topicId) {
               progressByTopic.set(topicId, {
                 completed: data.completed_lessons?.length ?? 0,
@@ -409,6 +414,8 @@ export const useDashboardData = () => {
     continueLearning: continueLearning ?? [],
     weakTopics: quizStats?.weakTopics ?? [],
     greeting: greeting(),
-    isLoading: profile === undefined || totalXp === undefined || sessionStats === undefined,
+    // `isPending` turns false when a query fails. Checking `data === undefined`
+    // left the dashboard on its loading skeleton forever after any failed read.
+    isLoading: !!user && (profilePending || totalXpPending || sessionStatsPending),
   };
 };

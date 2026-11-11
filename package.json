@@ -10,7 +10,9 @@
   "scripts": {
     "dev": "vite --config vite.config.ts",
     "build": "vite build --config vite.config.ts",
-    "lint": "eslint --config eslint.config.js src",
+    "lint": "eslint --config eslint.config.js src api",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "test": "node --test tests/security.test.mjs tests/lib.test.mjs",
     "preview": "vite preview --config vite.config.ts"
   },
   "dependencies": {

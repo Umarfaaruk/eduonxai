@@ -27,7 +27,9 @@ const QuizPage = () => {
 
   const topicTitle = (location.state as any)?.topicTitle ?? "Quiz";
   const subjectName = (location.state as any)?.subjectName ?? "";
-  const materialContext = (location.state as any)?.materialContext ?? "";
+  // Callers pass anything from a short summary to a full 100K-char document.
+  // Cap it here so the prompt always fits the AI request limit.
+  const materialContext = String((location.state as any)?.materialContext ?? "").slice(0, 6000);
   const difficulty = (location.state as any)?.difficulty ?? "Medium";
 
   const [questions, setQuestions] = useState<Question[]>([]);

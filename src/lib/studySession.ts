@@ -172,11 +172,7 @@ export async function saveStudySession(
       topicId: topicId || null,
     });
     // Re-throw with a clearer message
-    throw new Error(
-      `Session saved locally (will retry). Firestore write failed — ` +
-      `please check that your Firestore security rules allow writes to the "study_sessions" collection. ` +
-      `See FIRESTORE_SECURITY_RULES.md for the required rules configuration.`
-    );
+    throw new Error("Session saved locally and queued for retry: the server write failed.");
   }
 
   // ── NON-CRITICAL: XP, Streak, Profile updates (fire-and-forget) ──
@@ -265,7 +261,7 @@ export async function saveStudySession(
   // Extract streak value if available
   if (streakResult.status === "fulfilled" && typeof streakResult.value === "number") {
     newStreak = streakResult.value;
-  } else if (currentStreak) {
+  } else if (currentStreak && currentStreak.current_streak > 0) {
     // Fallback to UI's known streak if write failed
     newStreak = currentStreak.current_streak;
   }

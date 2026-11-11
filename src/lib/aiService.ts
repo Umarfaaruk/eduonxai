@@ -136,6 +136,59 @@ interface AIRequestOptions {
   model?: string;
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * PROXY LIMITS
+ * ============
+ * /api/groq rejects text requests with more than 24 messages or more than
+ * 60 000 characters in total. Long chats and large documents used to hit those
+ * limits and fail with a generic error, so every text request is fitted to the
+ * limits here: system messages and the newest turns are always kept, the
+ * oldest turns are dropped first, and a single oversized message is truncated
+ * as a last resort.
+ * ────────────────────────────────────────────────────────────────────────── */
+const MAX_PROXY_MESSAGES = 24;
+const MAX_PROXY_CHARS = 58_000; // small margin under the server's 60 000
+const TRUNCATION_NOTE = "\n\n[Content truncated to fit the AI request limit]";
+
+const textLength = (content: ChatMessage["content"]): number =>
+  typeof content === "string"
+    ? content.length
+    : content.reduce((sum, part) => sum + (part.text?.length ?? 0), 0);
+
+export function fitMessagesToLimits(messages: ChatMessage[]): ChatMessage[] {
+  let fitted = messages.filter(
+    (m, index) => index === messages.length - 1 || typeof m.content !== "string" || m.content.trim().length > 0
+  );
+  const total = () => fitted.reduce((sum, m) => sum + textLength(m.content), 0);
+
+  // Drop the oldest non-system turns (never the final message) until we fit.
+  while (fitted.length > MAX_PROXY_MESSAGES || total() > MAX_PROXY_CHARS) {
+    const dropIndex = fitted.findIndex((m, index) => m.role !== "system" && index < fitted.length - 1);
+    if (dropIndex === -1) break;
+    fitted = fitted.filter((_, index) => index !== dropIndex);
+  }
+
+  // Still too large: shorten the biggest plain-text messages.
+  let overflow = total() - MAX_PROXY_CHARS;
+  while (overflow > 0) {
+    let largest = -1;
+    fitted.forEach((m, index) => {
+      if (typeof m.content !== "string") return;
+      if (largest === -1 || m.content.length > (fitted[largest].content as string).length) largest = index;
+    });
+    if (largest === -1) break;
+    const content = fitted[largest].content as string;
+    const keep = Math.max(0, content.length - overflow - TRUNCATION_NOTE.length);
+    if (keep >= content.length) break;
+    fitted = fitted.map((m, index) =>
+      index === largest ? { ...m, content: content.slice(0, keep) + TRUNCATION_NOTE } : m
+    );
+    overflow = total() - MAX_PROXY_CHARS;
+  }
+
+  return fitted;
+}
+
 async function buildHeaders(): Promise<Record<string, string>> {
   return {
     "Content-Type": "application/json",
@@ -168,7 +221,8 @@ async function handleErrorResponse(resp: Response): Promise<never> {
  * Returns the full response text.
  */
 async function aiCompleteInner(options: AIRequestOptions): Promise<string> {
-  const { messages, temperature = 0.7, maxTokens = 4096, signal, model = MODEL_LARGE } = options;
+  const { temperature = 0.7, maxTokens = 4096, signal, model = MODEL_LARGE } = options;
+  const messages = fitMessagesToLimits(options.messages);
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const resp = await fetch(GROQ_PROXY_URL, {
@@ -219,7 +273,8 @@ async function aiStreamInner(
   options: AIRequestOptions,
   onToken: (token: string) => void
 ): Promise<string> {
-  const { messages, temperature = 0.7, maxTokens = 4096, signal, model = MODEL_LARGE } = options;
+  const { temperature = 0.7, maxTokens = 4096, signal, model = MODEL_LARGE } = options;
+  const messages = fitMessagesToLimits(options.messages);
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const resp = await fetch(GROQ_PROXY_URL, {
@@ -248,10 +303,10 @@ async function aiStreamInner(
       if (attempt < MAX_RETRIES) {
         const delay = getRetryDelay(resp, attempt);
         console.log(`[AI] ⏳ Rate limited. Retrying in ${(delay / 1000).toFixed(1)}s (attempt ${attempt + 1}/${MAX_RETRIES})...`);
-        // Notify the UI that we're waiting
-        onToken(`\n\n⏳ *Rate limited — retrying in ${Math.ceil(delay / 1000)}s...*\n\n`);
+        // The wait is NOT written into the token stream: callers append every
+        // token to the answer, so a status line here ended up inside the
+        // displayed (and saved) response.
         await sleep(delay, signal);
-        // Clear the retry message by sending empty — the caller will handle deduplication
         continue;
       }
       throw new Error(

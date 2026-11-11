@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { fetchFriendRecords, friendStatusFor, sendFriendRequest, acceptFriendRequest, type FriendRecord } from "@/lib/friends";
+import { withEffectiveStreak } from "@/lib/streak";
+import { invalidateFriendRecords } from "@/lib/queryInvalidation";
 
 /* ── Profile preview modal (opened from the leaderboard / search) ───────── */
 const ProfileModal = ({
@@ -28,13 +30,15 @@ const ProfileModal = ({
   const { data, isLoading } = useQuery({
     queryKey: ["profile-modal", uid],
     queryFn: async () => {
+      // The streak read must not take the whole card down: if it is refused
+      // (older security rules only let the owner read it) the profile still shows.
       const [pSnap, sSnap] = await Promise.all([
         getDoc(doc(db, "profiles", uid)),
-        getDoc(doc(db, "user_streaks", uid)),
+        getDoc(doc(db, "user_streaks", uid)).catch(() => null),
       ]);
       return {
         profile: pSnap.exists() ? (pSnap.data() as any) : null,
-        streak: sSnap.exists() ? (sSnap.data() as any) : null,
+        streak: sSnap?.exists() ? withEffectiveStreak(sSnap.data() as any) : null,
       };
     },
   });
@@ -121,7 +125,7 @@ const Leaderboard = () => {
     queryFn: async () => {
       if (!user) return null;
       const snap = await getDoc(doc(db, "user_streaks", user.uid));
-      return snap.exists() ? snap.data() : { current_streak: 0 };
+      return snap.exists() ? withEffectiveStreak(snap.data()) : { current_streak: 0 };
     },
     enabled: !!user,
   });
@@ -141,22 +145,32 @@ const Leaderboard = () => {
       ),
     [friendRecords, user?.uid]
   );
-  const refreshFriends = () =>
-    queryClient.invalidateQueries({ queryKey: ["friend-records", user?.uid] });
+  // The Friends page caches the same graph under its own key; refresh both.
+  const refreshFriends = () => invalidateFriendRecords(queryClient, user?.uid);
 
   const myNameEarly = (myProfile as any)?.full_name || user?.displayName || "You";
 
   const handleAddFriend = async (toUid: string) => {
     if (!user) return;
-    const res = await sendFriendRequest(user.uid, myNameEarly, toUid);
-    if (res === "sent") toast.success("Friend request sent!");
-    else if (res === "exists") toast.info("You're already connected or a request is pending.");
+    try {
+      const res = await sendFriendRequest(user.uid, myNameEarly, toUid);
+      if (res === "sent") toast.success("Friend request sent!");
+      else if (res === "exists") toast.info("You're already connected or a request is pending.");
+    } catch (error) {
+      console.error("[Leaderboard] Friend request failed:", error);
+      toast.error("Couldn't send the friend request. Please try again.");
+    }
     refreshFriends();
   };
   const handleAccept = async (recordId: string, requesterUid: string) => {
     if (!user) return;
-    await acceptFriendRequest(recordId, myNameEarly, requesterUid, user.uid);
-    toast.success("You're now friends!");
+    try {
+      await acceptFriendRequest(recordId, myNameEarly, requesterUid, user.uid);
+      toast.success("You're now friends!");
+    } catch (error) {
+      console.error("[Leaderboard] Accept failed:", error);
+      toast.error("Couldn't accept the request. Please try again.");
+    }
     refreshFriends();
   };
 

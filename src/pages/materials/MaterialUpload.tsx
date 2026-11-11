@@ -1,3 +1,5 @@
+import { fileToJpegDataUrl } from "@/lib/image";
+import { extractPdfText } from "@/lib/documentText";
 import { useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -19,59 +21,14 @@ import { getAuthHeaders } from "@/lib/authHeaders";
  */
 
 /**
- * Extract text from a PDF file using pdfjs-dist.
- * Loads the worker from CDN to avoid bundling issues.
+ * Extract text from a PDF file (shared PDF.js helper, bundled worker).
  */
 async function extractTextFromPDF(file: File): Promise<string> {
-  let blobUrl = "";
   try {
-    const pdfjsLib = await import("pdfjs-dist");
+    const { text, totalPages } = await extractPdfText(file);
 
-    // Load worker via blob to bypass browser CORS restrictions for web workers
-    const workerUrl = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
-    console.log(`[PDF] Fetching worker from ${workerUrl}`);
-    const response = await fetch(workerUrl);
-    if (!response.ok) throw new Error(`Failed to fetch PDF worker from CDN: ${response.statusText}`);
-    const blob = await response.blob();
-    blobUrl = URL.createObjectURL(blob);
-    
-    pdfjsLib.GlobalWorkerOptions.workerSrc = blobUrl;
-
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    const totalPages = pdf.numPages;
-    const textParts: string[] = [];
-
-    console.log(`[PDF] Extracting text from ${totalPages} pages of "${file.name}"`);
-
-    for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-      try {
-        const page = await pdf.getPage(pageNum);
-        const content = await page.getTextContent();
-        const pageText = content.items
-          .map((item: any) => {
-            if ('str' in item) {
-              return item.str;
-            }
-            return '';
-          })
-          .join(' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-
-        if (pageText.length > 0) {
-          textParts.push(`--- Page ${pageNum} ---\n${pageText}`);
-        }
-      } catch (pageErr) {
-        console.warn(`[PDF] Error on page ${pageNum}:`, pageErr);
-      }
-    }
-
-    const fullText = textParts.join('\n\n');
-
-    if (fullText.trim().length > 50) {
-      console.log(`[PDF] ✅ Extracted ${fullText.length} chars from "${file.name}"`);
-      return fullText;
+    if (text.trim().length > 50) {
+      return text;
     }
 
     return `[PDF Document: ${file.name}] This PDF appears to contain scanned images or non-selectable text. ` +
@@ -81,10 +38,6 @@ async function extractTextFromPDF(file: File): Promise<string> {
     return `[PDF Document: ${file.name}] Unable to extract text. ` +
       `Please ensure the PDF is not password-protected. ` +
       `The AI tutor can still help with general questions.`;
-  } finally {
-    if (blobUrl) {
-      URL.revokeObjectURL(blobUrl);
-    }
   }
 }
 
@@ -355,37 +308,15 @@ const MaterialUpload = () => {
           setUploadProgress(`Extracting text from ${file.name}...`);
           const extractedText = await extractTextFromFile(file);
 
-          let fileData = null;
+          let fileData: string | null = null;
           if (file.type.startsWith("image/")) {
             setUploadProgress(`Optimizing image ${file.name}...`);
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            const img = document.createElement('img');
-            const reader = new FileReader();
-            fileData = await new Promise<string>((resolve) => {
-              reader.onload = (ev) => {
-                img.onload = () => {
-                  const maxDim = 1200;
-                  let width = img.width;
-                  let height = img.height;
-                  if (width > maxDim || height > maxDim) {
-                    if (width > height) {
-                      height = Math.round((height * maxDim) / width);
-                      width = maxDim;
-                    } else {
-                      width = Math.round((width * maxDim) / height);
-                      height = maxDim;
-                    }
-                  }
-                  canvas.width = width;
-                  canvas.height = height;
-                  ctx?.drawImage(img, 0, 0, width, height);
-                  resolve(canvas.toDataURL('image/jpeg', 0.8));
-                };
-                img.src = ev.target?.result as string;
-              };
-              reader.readAsDataURL(file);
-            });
+            try {
+              fileData = await fileToJpegDataUrl(file, 1200, 0.8);
+            } catch (imgErr) {
+              // An unreadable image used to leave the upload spinning forever.
+              console.warn("[Upload] Image preview could not be generated:", imgErr);
+            }
           }
 
           setUploadProgress(`Analyzing ${file.name} with AI...`);

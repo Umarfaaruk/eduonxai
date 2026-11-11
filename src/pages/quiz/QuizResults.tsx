@@ -6,11 +6,14 @@ import { db } from "@/lib/firebase";
 import { doc, increment, runTransaction, serverTimestamp } from "firebase/firestore";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateUserStats } from "@/lib/queryInvalidation";
 
 const QuizResults = () => {
   const { state } = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const attemptId = state?.attemptId;
 
   const score = state?.score ?? 0;
@@ -56,8 +59,11 @@ const QuizResults = () => {
           ...(existing ? { last_updated: serverTimestamp() } : { created_at: serverTimestamp() }),
         }, { merge: true });
       }
-    }).catch(() => toast.error("Quiz progress could not be saved. Reload this page to retry."));
-  }, [user, total, topicId, attemptId, topicTitle, score, xp]);
+    })
+      // Dashboard, profile, progress and leaderboard cache these numbers.
+      .then(() => invalidateUserStats(queryClient, user.uid))
+      .catch(() => toast.error("Quiz progress could not be saved. Reload this page to retry."));
+  }, [user, total, topicId, attemptId, topicTitle, score, xp, queryClient]);
 
   // Redirect if no quiz data — must be in useEffect, not during render
   useEffect(() => {

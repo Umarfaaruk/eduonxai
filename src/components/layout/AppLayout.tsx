@@ -143,11 +143,9 @@ const AppLayout = () => {
         const userData = userSnap.data();
         if (userData?.role === "admin" || userData?.is_admin === true) return true;
       } catch {}
-      try {
-        const profileSnap = await getDoc(doc(db, "profiles", user.uid));
-        const profileData = profileSnap.data();
-        if (profileData?.role === "admin" || profileData?.is_admin === true) return true;
-      } catch {}
+      // Admin status lives ONLY in /users (see firestore.rules). This query
+      // shares its cache entry with AdminRoute, so both must agree: a role
+      // field on the self-editable profile document must never count.
       return false;
     },
     enabled: !!user,

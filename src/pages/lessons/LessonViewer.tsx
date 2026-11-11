@@ -12,6 +12,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
 import { useDeepFocus } from "@/hooks/useDeepFocus";
 import { awardXP } from "@/lib/studySession";
+import { invalidateUserStats } from "@/lib/queryInvalidation";
 import { toast } from "sonner";
 import { doc, getDoc, collection, getDocs, query, where, writeBatch, addDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 
@@ -266,8 +267,7 @@ const LessonViewer = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["lesson-progress", topicId, user?.uid] });
-      queryClient.invalidateQueries({ queryKey: ["topics", user?.uid] });
-      queryClient.invalidateQueries({ queryKey: ["totalXp"] });
+      invalidateUserStats(queryClient, user?.uid);
       toast.success(`Lesson completed! +${LESSON_XP} XP earned.`);
     },
     onError: (err) => {
@@ -310,7 +310,9 @@ const LessonViewer = () => {
       if (part.startsWith("`") && part.endsWith("`"))
         return <code key={idx} className="text-[#29ABE2] bg-[#DBEAFE] px-1.5 py-0.5 rounded-md text-xs font-mono border border-[#29ABE2]/10">{part.slice(1, -1)}</code>;
       const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-      if (linkMatch)
+      // Only real web links: lesson text is AI-generated, and a javascript: URL
+      // here would run script when clicked.
+      if (linkMatch && /^https?:\/\//i.test(linkMatch[2].trim()))
         return <a key={idx} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" className="text-[#29ABE2] hover:text-[#29ABE2] font-medium underline underline-offset-2">{linkMatch[1]}</a>;
       return part;
     });

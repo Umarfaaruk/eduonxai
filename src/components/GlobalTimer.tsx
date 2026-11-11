@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { saveStudySession, processRetryQueue } from "@/lib/studySession";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { invalidateUserStats } from "@/lib/queryInvalidation";
 
 /**
  * EDUONX GLOBAL TIMER — Production-Grade Implementation
@@ -88,16 +89,12 @@ const GlobalTimer = () => {
   const sessionKey = user ? `eduonx_timer_${user.uid}` : null;
 
   // ── Invalidate caches (defined FIRST to avoid hoisting issues) ──
+  // The previous list targeted keys no query uses ("studyTime",
+  // "progressAnalytics", "dashboardData"), so the dashboard kept showing the
+  // old study time, XP and streak for minutes after a session was saved.
   const invalidateProgress = useCallback(() => {
     if (!user) return;
-    const uid = user.uid;
-    queryClient.invalidateQueries({ queryKey: ["studyTime", uid] });
-    queryClient.invalidateQueries({ queryKey: ["progressAnalytics", uid] });
-    queryClient.invalidateQueries({ queryKey: ["streak", uid] });
-    queryClient.invalidateQueries({ queryKey: ["totalXp", uid] });
-    queryClient.invalidateQueries({ queryKey: ["profile", uid] });
-    queryClient.invalidateQueries({ queryKey: ["dashboardData", uid] });
-    queryClient.invalidateQueries({ queryKey: ["studySessions", uid] });
+    invalidateUserStats(queryClient, user.uid);
   }, [user, queryClient]);
 
   // ── Streak data (placeholder until loaded from Firestore) ──
@@ -111,14 +108,17 @@ const GlobalTimer = () => {
     try {
       const stored = localStorage.getItem(sessionKey);
       if (stored) {
-        const { seconds: savedSeconds, startedAt: savedStartedAt, timestamp } = JSON.parse(stored);
+        const { seconds: savedSeconds, startedAt: savedStartedAt, timestamp, pendingSave } = JSON.parse(stored);
         // Discard data older than 24 hours
         if (timestamp && Date.now() - timestamp > 86_400_000) {
           localStorage.removeItem(sessionKey);
           setRecovered(true);
           return;
         }
-        if (typeof savedSeconds === "number" && savedSeconds > 0) {
+        // A session flagged pendingSave is saved to Firestore by the effect
+        // below. Loading its seconds into the live counter as well made the
+        // same study time (and XP) get saved a second time on the next stop.
+        if (!pendingSave && typeof savedSeconds === "number" && savedSeconds > 0) {
           setSeconds(savedSeconds);
           startedAtRef.current = savedStartedAt || new Date().toISOString();
           console.log(`[Timer] ✅ Recovered ${savedSeconds}s from localStorage`);
@@ -265,26 +265,29 @@ const GlobalTimer = () => {
       startedAtRef.current = new Date().toISOString();
       invalidateProgress();
 
+      // The connection works again: flush any sessions queued by earlier
+      // failed saves instead of waiting for the next page load.
+      processRetryQueue(user.uid)
+        .then((flushed) => { if (flushed > 0) invalidateProgress(); })
+        .catch(() => {});
+
       if (resetAfter) {
         setRunning(true);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[Timer] ❌ Save failed:", msg);
-      toast.error("Session queued for retry. Check Firestore rules if this persists.");
+      toast.error("Couldn't reach the server. Your session is saved on this device and will sync automatically.");
 
-      // Keep data in localStorage for recovery
+      // saveStudySession already put this session in the retry queue. Keeping
+      // the same seconds on the counter as well would save them twice (once
+      // from the queue, once on the next stop), so start a fresh session.
       if (sessionKey) {
-        try {
-          localStorage.setItem(sessionKey, JSON.stringify({
-            seconds: secondsRef.current,
-            startedAt: startedAtRef.current,
-            timestamp: Date.now(),
-          }));
-        } catch {}
+        try { localStorage.removeItem(sessionKey); } catch {}
       }
+      setSeconds(0);
+      startedAtRef.current = new Date().toISOString();
 
-      // Resume so user doesn't lose progress
       if (resetAfter) {
         setRunning(true);
       }
@@ -490,22 +493,19 @@ const GlobalTimer = () => {
       const stored = localStorage.getItem(sessionKey);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (parsed.pendingSave && parsed.seconds >= MIN_SAVE_DURATION) {
+        if (parsed.pendingSave && Number(parsed.seconds) >= MIN_SAVE_DURATION) {
           console.log(`[Timer] 📦 Saving pending session from previous load: ${parsed.seconds}s`);
-          // Save async, then clear
-          saveStudySession(user.uid, parsed.startedAt, parsed.seconds, streak, parsed.topicId)
+          // Claim the record first. If the save fails, saveStudySession puts the
+          // session in the retry queue, so leaving it here too would save it twice.
+          localStorage.removeItem(sessionKey);
+          const pendingSeconds = Math.min(Number(parsed.seconds), MAX_SESSION_SECONDS);
+          saveStudySession(user.uid, parsed.startedAt || new Date().toISOString(), pendingSeconds, streak, parsed.topicId)
             .then(({ xp, newStreak }) => {
               toast.success(`Recovered session saved! +${xp} XP · ${newStreak}-day streak 🔥`);
-              localStorage.removeItem(sessionKey);
               invalidateProgress();
-              // Reset if we loaded this into current session
-              if (secondsRef.current === parsed.seconds) {
-                setSeconds(0);
-                startedAtRef.current = new Date().toISOString();
-              }
             })
             .catch(() => {
-              console.warn("[Timer] Failed to save pending session, keeping in localStorage");
+              console.warn("[Timer] Pending session queued for retry");
             });
         }
       }

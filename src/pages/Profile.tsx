@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { toast } from "sonner";
+import { withEffectiveStreak } from "@/lib/streak";
 import { useRef } from "react";
 
 const Profile = () => {
@@ -45,7 +46,7 @@ const Profile = () => {
         // Get streak
         const streakRef = doc(db, "user_streaks", user.uid);
         const streakSnap = await getDoc(streakRef);
-        const streak = streakSnap.exists() ? streakSnap.data() : { current_streak: 0, longest_streak: 0 };
+        const streak = streakSnap.exists() ? withEffectiveStreak(streakSnap.data()) : { current_streak: 0, longest_streak: 0 };
 
         // Get quiz attempts
         const quizQ = query(collection(db, "quiz_attempts"), where("user_id", "==", user.uid));
@@ -57,13 +58,20 @@ const Profile = () => {
         const sessionDocs = await getDocs(sessionsQ);
         const totalStudySeconds = sessionDocs.docs.reduce((sum, doc) => sum + (doc.data().duration_seconds || 0), 0);
 
+        // Completed lessons across every topic
+        const progressDocs = await getDocs(query(collection(db, "lesson_progress"), where("user_id", "==", user.uid)));
+        const lessonsCompleted = progressDocs.docs.reduce(
+          (sum, d) => sum + (Array.isArray(d.data().completed_lessons) ? d.data().completed_lessons.length : 0),
+          0
+        );
+
         return {
           totalXp,
           level: Math.floor(totalXp / 200) + 1,
           levelProgress: totalXp % 200,
           streak: streak,
           quizCount: quizCount,
-          lessonsCompleted: quizCount,
+          lessonsCompleted,
           studyHours: (totalStudySeconds / 3600).toFixed(1),
           badges: [],
         };

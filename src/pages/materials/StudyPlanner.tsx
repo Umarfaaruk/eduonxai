@@ -1,3 +1,4 @@
+import { toDateKey } from "@/lib/utils";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { collection, getDocs, query, where, updateDoc, doc, getDoc, writeBatch } from "firebase/firestore";
@@ -204,8 +205,17 @@ Limit the response to match the number of days (${daysDiff} days), max 14 entrie
         jsonString = jsonString.substring(startIdx, endIdx + 1);
         const parsed = JSON.parse(jsonString.trim());
 
-        if (!parsed.topic_title || !parsed.schedule || !parsed.lessons) {
+        if (!parsed.topic_title || !Array.isArray(parsed.schedule) || !Array.isArray(parsed.lessons)) {
           throw new Error("Missing required fields in generated plan JSON");
+        }
+        // Firestore rejects `undefined` fields, so one lesson without a title or
+        // content used to fail the whole save. Keep only complete lessons.
+        parsed.lessons = parsed.lessons
+          .filter((l: any) => l && typeof l.title === "string" && l.title.trim() && typeof l.content === "string" && l.content.trim())
+          .map((l: any) => ({ title: l.title.trim(), content: l.content, day: Number.isFinite(Number(l.day)) ? Number(l.day) : null }));
+        parsed.schedule = parsed.schedule.filter((d: any) => d && typeof d === "object");
+        if (parsed.lessons.length === 0 || parsed.schedule.length === 0) {
+          throw new Error("Generated plan had no usable lessons or schedule");
         }
 
         scheduleData = parsed;
@@ -222,11 +232,11 @@ Limit the response to match the number of days (${daysDiff} days), max 14 entrie
       const newTopicRef = doc(collection(db, "topics"));
       
       batch.set(newTopicRef, {
-        title: scheduleData.topic_title,
-        subject: scheduleData.subject || "General",
-        subjectName: scheduleData.subject || "General",
+        title: String(scheduleData.topic_title),
+        subject: String(scheduleData.subject || "General"),
+        subjectName: String(scheduleData.subject || "General"),
         subjectIcon: "file-text",
-        description: scheduleData.description || "",
+        description: String(scheduleData.description || ""),
         lesson_count: scheduleData.lessons.length,
         is_custom: true,
         material_id: selectedMaterial?.id || null,
@@ -250,13 +260,17 @@ Limit the response to match the number of days (${daysDiff} days), max 14 entrie
       });
 
       const maxDailyMinutes = hoursPerDay * 60;
-      const sanitizedSchedule = scheduleData.schedule.map((d: any, i: number) => ({
-        day: d.day ?? i + 1,
-        title: d.title || `Day ${i + 1}`,
-        tasks: Array.isArray(d.tasks) && d.tasks.length > 0 ? d.tasks.slice(0, 5) : ["Review previous material", "Practice key concepts"],
-        estimated_minutes: Math.max(15, Math.min(d.estimated_minutes ?? maxDailyMinutes, maxDailyMinutes)),
-        completed: false,
-      })).sort((a: any, b: any) => a.day - b.day).slice(0, 14);
+      const sanitizedSchedule = scheduleData.schedule.map((d: any, i: number) => {
+        const tasks = Array.isArray(d.tasks) ? d.tasks.filter((t: any) => typeof t === "string" && t.trim()).slice(0, 5) : [];
+        const minutes = Number(d.estimated_minutes);
+        return {
+          day: Number.isFinite(Number(d.day)) ? Number(d.day) : i + 1,
+          title: typeof d.title === "string" && d.title.trim() ? d.title.trim() : `Day ${i + 1}`,
+          tasks: tasks.length > 0 ? tasks : ["Review previous material", "Practice key concepts"],
+          estimated_minutes: Math.max(15, Math.min(Number.isFinite(minutes) ? minutes : maxDailyMinutes, maxDailyMinutes)),
+          completed: false,
+        };
+      }).sort((a: any, b: any) => a.day - b.day).slice(0, 14);
 
       const newPlanRef = doc(collection(db, "study_plans"));
       batch.set(newPlanRef, {
@@ -287,8 +301,11 @@ Limit the response to match the number of days (${daysDiff} days), max 14 entrie
   const toggleDayComplete = async (dayIndex: number) => {
     if (!activePlan) return;
     try {
-      const newSchedule = [...activePlan.schedule];
-      newSchedule[dayIndex].completed = !newSchedule[dayIndex].completed;
+      // Build a new array of new objects: mutating the cached plan in place
+      // flipped the checkbox on screen even when the save failed.
+      const newSchedule = activePlan.schedule.map((day, i) =>
+        i === dayIndex ? { ...day, completed: !day.completed } : day
+      );
       await updateDoc(doc(db, "study_plans", activePlan.id), { schedule: newSchedule });
       refetchPlans();
     } catch (e) {
@@ -402,7 +419,7 @@ Limit the response to match the number of days (${daysDiff} days), max 14 entrie
                         to={`/quiz/${activePlan.topic_id}`}
                         state={{
                           topicTitle: dayObj.title,
-                          materialContext: materials?.find((m: any) => m.id === activePlan.material_id)?.extracted_text || materials?.find((m: any) => m.id === activePlan.material_id)?.summary || "",
+                          materialContext: (materials?.find((m: any) => m.id === activePlan.material_id)?.extracted_text || materials?.find((m: any) => m.id === activePlan.material_id)?.summary || "").substring(0, 5000),
                           difficulty: "Medium"
                         }}
                         className="inline-flex items-center gap-1.5 text-xs font-semibold text-success hover:text-success/80 bg-success/10 hover:bg-success/20 px-3 py-1.5 rounded-lg transition-all"
@@ -537,7 +554,7 @@ Limit the response to match the number of days (${daysDiff} days), max 14 entrie
               <div className="space-y-2 text-left">
                 <label className="text-sm font-medium">Target / Exam Date</label>
                 <Input type="date" value={examDateStr} onChange={e => setExamDateStr(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]} />
+                  min={toDateKey(new Date())} />
               </div>
               <div className="space-y-2 text-left">
                 <label className="text-sm font-medium">Study Hours Per Day</label>

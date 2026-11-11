@@ -48,6 +48,7 @@ const AISolution = () => {
 
   // Cleanup on unmount: abort any in-flight requests
   useEffect(() => {
+    componentMountedRef.current = true;
     return () => {
       componentMountedRef.current = false;
       if (abortControllerRef.current) {

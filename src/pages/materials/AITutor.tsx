@@ -1,3 +1,4 @@
+import { extractPdfText } from "@/lib/documentText";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Bot, Send, Sparkles, Loader2, Copy, Check, Square, Trash2, FileText, X, Upload, MessageCircleQuestion, Mic, Paperclip } from "lucide-react";
@@ -122,51 +123,15 @@ Return ONLY valid JSON.`;
 }
 
 /**
- * Extract text from uploaded PDF using pdfjs-dist
+ * Extract text from an uploaded PDF (shared PDF.js helper, bundled worker).
  */
 async function extractTextFromPDF(file: File): Promise<string> {
-  let blobUrl = "";
   try {
-    const pdfjsLib = await import("pdfjs-dist");
-
-    // Load worker via blob to bypass browser CORS restrictions for web workers
-    const workerUrl = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
-    console.log(`[PDF] Fetching worker from ${workerUrl}`);
-    const response = await fetch(workerUrl);
-    if (!response.ok) throw new Error(`Failed to fetch PDF worker from CDN: ${response.statusText}`);
-    const blob = await response.blob();
-    blobUrl = URL.createObjectURL(blob);
-    
-    pdfjsLib.GlobalWorkerOptions.workerSrc = blobUrl;
-
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    const totalPages = pdf.numPages;
-    const textParts: string[] = [];
-
-    for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-      try {
-        const page = await pdf.getPage(pageNum);
-        const content = await page.getTextContent();
-        const pageText = content.items
-          .map((item: any) => ('str' in item ? item.str : ''))
-          .join(' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-        if (pageText.length > 0) {
-          textParts.push(`--- Page ${pageNum} ---\n${pageText}`);
-        }
-      } catch {}
-    }
-
-    return textParts.join('\n\n') || `[PDF: ${file.name}] Could not extract text content.`;
+    const { text } = await extractPdfText(file);
+    return text || `[PDF: ${file.name}] Could not extract text content.`;
   } catch (err) {
     console.error("[AITutor] PDF extraction failed:", err);
     return `[PDF: ${file.name}] Unable to extract text.`;
-  } finally {
-    if (blobUrl) {
-      URL.revokeObjectURL(blobUrl);
-    }
   }
 }
 

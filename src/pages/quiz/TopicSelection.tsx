@@ -10,6 +10,7 @@ import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { extractYouTubeVideoId } from "@/lib/youtube";
 
 const PracticeArena = () => {
   const { user } = useAuth();
@@ -24,9 +25,15 @@ const PracticeArena = () => {
       return;
     }
 
+    const videoId = extractYouTubeVideoId(youtubeUrl);
+    if (!videoId) {
+      toast.error("Please enter a valid YouTube URL");
+      return;
+    }
+
     try {
       setIsProcessingYoutube(true);
-      const res = await fetch(`/api/youtube-transcript?url=${encodeURIComponent(youtubeUrl.trim())}`, {
+      const res = await fetch(`/api/youtube-transcript?v=${videoId}`, {
         headers: await getAuthHeaders(),
       });
       if (!res.ok) {
@@ -40,9 +47,9 @@ const PracticeArena = () => {
       }
 
       // Navigate to quiz viewer with the transcript as materialContext
-      navigate(`/quiz/youtube-${data.videoId}`, {
+      navigate(`/quiz/youtube-${videoId}`, {
         state: {
-          topicTitle: data.title,
+          topicTitle: data.title || "YouTube Video",
           subjectName: "YouTube Video",
           materialContext: data.transcript.substring(0, 5000), // passing limited transcript for quiz generation context
           difficulty
